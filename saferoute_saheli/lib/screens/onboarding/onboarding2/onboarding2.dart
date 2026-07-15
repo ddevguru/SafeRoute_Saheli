@@ -1,9 +1,9 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_bloc/flutter_bloc.dart';
+import 'package:saferoute_saheli/screens/onboarding/onboarding2/bloc/onboarding_bloc.dart';
+import 'package:saferoute_saheli/screens/onboarding/onboarding2/widgets/next_button.dart';
 
-import '../blocs/onboarding/onboarding_bloc.dart';
-import '../widgets/next_button.dart';
-import 'login_screen.dart';
+
 
 class OnboardingScreen extends StatelessWidget {
 
@@ -18,12 +18,12 @@ class OnboardingScreen extends StatelessWidget {
 
         if (state is NavigateToLogin) {
 
-          Navigator.pushReplacement(
-            context,
-            MaterialPageRoute(
-              builder: (_) => const LoginScreen(),
-            ),
-          );
+          // Navigator.pushReplacement(
+          //   context,
+          //   MaterialPageRoute(
+          //     builder: (_) => const LoginScreen(),
+          //   ),
+          // );
 
         }
 

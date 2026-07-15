@@ -59,146 +59,330 @@ class _SplashScreenState extends State<SplashScreen>
             /// Animated Background
             const AnimatedBackground(),
 
-            /// Center Card
+            /// Center Card with Responsive Width
             Center(
-              child: LuxuryCard(
-                child: Stack(
-                  alignment: Alignment.center,
-                  children: [
-                    /// Luxury Frame
-                    Positioned.fill(
-                      child: Padding(
-                        padding: EdgeInsets.all(
-                          MediaQuery.of(context).size.width * 0.02,
-                        ),
+              child: Padding(
+                padding: EdgeInsets.symmetric(
+                  horizontal: MediaQuery.of(context).size.width > 600 ? 40 : 20,
+                ),
+                child: LuxuryCard(
+                  child: Stack(
+                    alignment: Alignment.center,
+                    children: [
+                      /// Luxury Frame - Full Background
+                      Positioned.fill(
                         child: Image.asset(
                           "assets/frames/luxury_frame.png",
-                          fit: BoxFit.contain,
+                          fit: BoxFit.cover,
                         ),
                       ),
-                    ),
 
-                    /// LOGO
-                    const Positioned(
-                      top: 70,
-                      child: LogoAnimation(),
-                    ),
-
-                    /// APP NAME
-                    Positioned(
-                      bottom: MediaQuery.of(context).size.height * 0.28,
-                      left: 0,
-                      right: 0,
-                      child: FadeTransition(
-                        opacity: CurvedAnimation(
-                          parent: textController,
-                          curve: Curves.easeIn,
-                        ),
-                        child: Transform(
-                          alignment: Alignment.center,
-                          transform: Matrix4.identity()
-                            ..setEntry(3, 2, 0.001)
-                            ..rotateX(0.02),
-                          child: Stack(
-                            alignment: Alignment.center,
+                      /// Content Stack - Centered in Frame
+                      Positioned.fill(
+                        child: Padding(
+                          padding: EdgeInsets.symmetric(
+                            horizontal: MediaQuery.of(context).size.width * 0.08,
+                            vertical: MediaQuery.of(context).size.width * 0.06,
+                          ),
+                          child: Column(
+                            mainAxisAlignment: MainAxisAlignment.center,
                             children: [
-                              // Shadow layer for 3D effect
-                              Text(
-                                "SafeRoute Saheli",
-                                style: TextStyle(
-                                  color: Colors.black.withValues(alpha: 0.3),
-                                  fontSize: MediaQuery.of(context).size.width * 0.08,
-                                  fontWeight: FontWeight.w700,
-                                  letterSpacing: 1.5,
+                              /// APP NAME - SAFE ROUTE (Gold) - 3D Effect
+                              Transform.translate(
+                                offset: Offset(MediaQuery.of(context).size.width * 0.12, MediaQuery.of(context).size.width * 0.05),
+                                child: FadeTransition(
+                                  opacity: CurvedAnimation(
+                                    parent: textController,
+                                    curve: Curves.easeIn,
+                                  ),
+                                  child: Stack(
+                                    alignment: Alignment.center,
+                                    children: [
+                                      // Back layer - darkest
+                                      Transform.translate(
+                                        offset: const Offset(0, 8),
+                                        child: Text(
+                                          "SAFE ROUTE",
+                                          style: TextStyle(
+                                            color: Colors.black.withValues(alpha: 0.7),
+                                            fontSize: MediaQuery.of(context).size.width * 0.09,
+                                            fontWeight: FontWeight.w900,
+                                            letterSpacing: 2,
+                                          ),
+                                        ),
+                                      ),
+                                      // Mid layer 1
+                                      Transform.translate(
+                                        offset: const Offset(0, 6),
+                                        child: Text(
+                                          "SAFE ROUTE",
+                                          style: TextStyle(
+                                            color: Colors.black.withValues(alpha: 0.6),
+                                            fontSize: MediaQuery.of(context).size.width * 0.09,
+                                            fontWeight: FontWeight.w900,
+                                            letterSpacing: 2,
+                                          ),
+                                        ),
+                                      ),
+                                      // Mid layer 2
+                                      Transform.translate(
+                                        offset: const Offset(0, 4),
+                                        child: Text(
+                                          "SAFE ROUTE",
+                                          style: TextStyle(
+                                            color: Colors.black.withValues(alpha: 0.5),
+                                            fontSize: MediaQuery.of(context).size.width * 0.09,
+                                            fontWeight: FontWeight.w900,
+                                            letterSpacing: 2,
+                                          ),
+                                        ),
+                                      ),
+                                      // Mid layer 3
+                                      Transform.translate(
+                                        offset: const Offset(0, 2),
+                                        child: Text(
+                                          "SAFE ROUTE",
+                                          style: TextStyle(
+                                            color: Colors.black.withValues(alpha: 0.3),
+                                            fontSize: MediaQuery.of(context).size.width * 0.09,
+                                            fontWeight: FontWeight.w900,
+                                            letterSpacing: 2,
+                                          ),
+                                        ),
+                                      ),
+                                      // Front layer - main golden text
+                                      Text(
+                                        "SAFE ROUTE",
+                                        style: TextStyle(
+                                          color: const Color(0xFFD4AF37),
+                                          fontSize: MediaQuery.of(context).size.width * 0.09,
+                                          fontWeight: FontWeight.w900,
+                                          letterSpacing: 2,
+                                          shadows: [
+                                            Shadow(
+                                              offset: const Offset(0, 0),
+                                              blurRadius: 20,
+                                              color: const Color(0xFFD4AF37).withValues(alpha: 0.8),
+                                            ),
+                                            Shadow(
+                                              offset: const Offset(0, -2),
+                                              blurRadius: 10,
+                                              color: Colors.white.withValues(alpha: 0.3),
+                                            ),
+                                          ],
+                                        ),
+                                      ),
+                                    ],
+                                  ),
                                 ),
                               ),
-                              // Main text
-                              Text(
-                                "SafeRoute Saheli",
-                                style: TextStyle(
-                                  color: const Color(0xffE8D8BE),
-                                  fontSize: MediaQuery.of(context).size.width * 0.08,
-                                  fontWeight: FontWeight.w700,
-                                  letterSpacing: 1.5,
-                                  shadows: [
-                                    Shadow(
-                                      offset: const Offset(2, 2),
-                                      blurRadius: 8,
-                                      color: Colors.black.withValues(alpha: 0.4),
+
+                              /// Reduced Gap between SAFE ROUTE and SAHELI
+                              const SizedBox(height: 4),
+
+                              /// APP NAME - SAHELI (Purple) - 3D Effect
+                              FadeTransition(
+                                opacity: CurvedAnimation(
+                                  parent: textController,
+                                  curve: const Interval(0.1, 1, curve: Curves.easeIn),
+                                ),
+                                child: Stack(
+                                  alignment: Alignment.center,
+                                  children: [
+                                    // Back layer - darkest
+                                    Transform.translate(
+                                      offset: const Offset(0, 10),
+                                      child: Text(
+                                        "SAHELI",
+                                        style: TextStyle(
+                                          color: Colors.black.withValues(alpha: 0.8),
+                                          fontSize: MediaQuery.of(context).size.width * 0.11,
+                                          fontWeight: FontWeight.w900,
+                                          letterSpacing: 2.5,
+                                        ),
+                                      ),
                                     ),
-                                    Shadow(
-                                      offset: const Offset(-1, -1),
-                                      blurRadius: 10,
-                                      color: Colors.white.withValues(alpha: 0.2),
+                                    // Mid layer 1
+                                    Transform.translate(
+                                      offset: const Offset(0, 8),
+                                      child: Text(
+                                        "SAHELI",
+                                        style: TextStyle(
+                                          color: Colors.black.withValues(alpha: 0.7),
+                                          fontSize: MediaQuery.of(context).size.width * 0.11,
+                                          fontWeight: FontWeight.w900,
+                                          letterSpacing: 2.5,
+                                        ),
+                                      ),
                                     ),
-                                    Shadow(
-                                      blurRadius: 25,
-                                      color: Colors.white24,
-                                    )
+                                    // Mid layer 2
+                                    Transform.translate(
+                                      offset: const Offset(0, 6),
+                                      child: Text(
+                                        "SAHELI",
+                                        style: TextStyle(
+                                          color: Colors.black.withValues(alpha: 0.6),
+                                          fontSize: MediaQuery.of(context).size.width * 0.11,
+                                          fontWeight: FontWeight.w900,
+                                          letterSpacing: 2.5,
+                                        ),
+                                      ),
+                                    ),
+                                    // Mid layer 3
+                                    Transform.translate(
+                                      offset: const Offset(0, 4),
+                                      child: Text(
+                                        "SAHELI",
+                                        style: TextStyle(
+                                          color: Colors.black.withValues(alpha: 0.4),
+                                          fontSize: MediaQuery.of(context).size.width * 0.11,
+                                          fontWeight: FontWeight.w900,
+                                          letterSpacing: 2.5,
+                                        ),
+                                      ),
+                                    ),
+                                    // Mid layer 4
+                                    Transform.translate(
+                                      offset: const Offset(0, 2),
+                                      child: Text(
+                                        "SAHELI",
+                                        style: TextStyle(
+                                          color: Colors.black.withValues(alpha: 0.2),
+                                          fontSize: MediaQuery.of(context).size.width * 0.11,
+                                          fontWeight: FontWeight.w900,
+                                          letterSpacing: 2.5,
+                                        ),
+                                      ),
+                                    ),
+                                    // Front layer - main purple text
+                                    Text(
+                                      "SAHELI",
+                                      style: TextStyle(
+                                        color: const Color(0xFFB8A8FF),
+                                        fontSize: MediaQuery.of(context).size.width * 0.11,
+                                        fontWeight: FontWeight.w900,
+                                        letterSpacing: 2.5,
+                                        shadows: [
+                                          Shadow(
+                                            offset: const Offset(0, 0),
+                                            blurRadius: 25,
+                                            color: const Color(0xFFB8A8FF).withValues(alpha: 1.0),
+                                          ),
+                                          Shadow(
+                                            offset: const Offset(0, -3),
+                                            blurRadius: 15,
+                                            color: Colors.white.withValues(alpha: 0.4),
+                                          ),
+                                        ],
+                                      ),
+                                    ),
                                   ],
+                                ),
+                              ),
+
+                              /// Tagline with decorative dividers
+                              SizedBox(height: MediaQuery.of(context).size.width * 0.06),
+
+                              FadeTransition(
+                                opacity: CurvedAnimation(
+                                  parent: textController,
+                                  curve: const Interval(
+                                    .3,
+                                    1,
+                                    curve: Curves.easeIn,
+                                  ),
+                                ),
+                                child: Column(
+                                  children: [
+                                    Row(
+                                      mainAxisAlignment: MainAxisAlignment.center,
+                                      children: [
+                                        Container(
+                                          width: 20,
+                                          height: 1,
+                                          color: const Color(0xFFD4AF37).withValues(alpha: 0.6),
+                                        ),
+                                        const SizedBox(width: 8),
+                                        Text(
+                                          "◆",
+                                          style: TextStyle(
+                                            color: const Color(0xFFD4AF37),
+                                            fontSize: 12,
+                                            shadows: [
+                                              Shadow(
+                                                blurRadius: 8,
+                                                color: const Color(0xFFD4AF37).withValues(alpha: 0.5),
+                                              ),
+                                            ],
+                                          ),
+                                        ),
+                                        const SizedBox(width: 8),
+                                        Container(
+                                          width: 20,
+                                          height: 1,
+                                          color: const Color(0xFFD4AF37).withValues(alpha: 0.6),
+                                        ),
+                                      ],
+                                    ),
+                                    const SizedBox(height: 8),
+                                    Stack(
+                                      alignment: Alignment.center,
+                                      children: [
+                                        Text(
+                                          "SAFETY. TRUST. RESPONSE.",
+                                          style: TextStyle(
+                                            color: Colors.black.withValues(alpha: 0.3),
+                                            fontSize: MediaQuery.of(context).size.width * 0.032,
+                                            letterSpacing: 1.8,
+                                            fontWeight: FontWeight.w600,
+                                          ),
+                                        ),
+                                        Text(
+                                          "SAFETY. TRUST. RESPONSE.",
+                                          style: TextStyle(
+                                            color: const Color(0xFFD4AF37),
+                                            fontSize: MediaQuery.of(context).size.width * 0.032,
+                                            letterSpacing: 1.8,
+                                            fontWeight: FontWeight.w600,
+                                            shadows: [
+                                              Shadow(
+                                                offset: const Offset(1, 1),
+                                                blurRadius: 4,
+                                                color: Colors.black.withValues(alpha: 0.4),
+                                              ),
+                                            ],
+                                          ),
+                                        ),
+                                      ],
+                                    ),
+                                  ],
+                                ),
+                              ),
+
+                              /// LOGO - Inside Frame
+                              SizedBox(height: MediaQuery.of(context).size.width * 0.08),
+
+                              FadeTransition(
+                                opacity: CurvedAnimation(
+                                  parent: textController,
+                                  curve: const Interval(
+                                    .2,
+                                    1,
+                                    curve: Curves.easeIn,
+                                  ),
+                                ),
+                                child: SizedBox(
+                                  width: MediaQuery.of(context).size.width * 0.18,
+                                  height: MediaQuery.of(context).size.width * 0.18,
+                                  child: const LogoAnimation(),
                                 ),
                               ),
                             ],
                           ),
                         ),
                       ),
-                    ),
-
-                    /// TAGLINE
-                    Positioned(
-                      bottom: MediaQuery.of(context).size.height * 0.22,
-                      left: 0,
-                      right: 0,
-                      child: FadeTransition(
-                        opacity: CurvedAnimation(
-                          parent: textController,
-                          curve: const Interval(
-                            .3,
-                            1,
-                            curve: Curves.easeIn,
-                          ),
-                        ),
-                        child: Transform(
-                          alignment: Alignment.center,
-                          transform: Matrix4.identity()
-                            ..setEntry(3, 2, 0.001)
-                            ..rotateX(0.01),
-                          child: Stack(
-                            alignment: Alignment.center,
-                            children: [
-                              // Shadow layer
-                              Text(
-                                "Safety. Trust. Response.",
-                                style: TextStyle(
-                                  color: Colors.black.withValues(alpha: 0.2),
-                                  fontSize: MediaQuery.of(context).size.width * 0.04,
-                                  letterSpacing: 1.5,
-                                ),
-                              ),
-                              // Main text
-                              Text(
-                                "Safety. Trust. Response.",
-                                style: TextStyle(
-                                  color: Colors.white70,
-                                  fontSize: MediaQuery.of(context).size.width * 0.04,
-                                  letterSpacing: 1.5,
-                                  shadows: [
-                                    Shadow(
-                                      offset: const Offset(1, 1),
-                                      blurRadius: 4,
-                                      color: Colors.black.withValues(alpha: 0.3),
-                                    ),
-                                  ],
-                                ),
-                              ),
-                            ],
-                          ),
-                        ),
-                      ),
-                    ),
-
-                  
-                  ],
+                    ],
+                  ),
                 ),
               ),
             ),
