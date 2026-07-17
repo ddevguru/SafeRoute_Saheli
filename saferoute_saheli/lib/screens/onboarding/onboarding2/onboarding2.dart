@@ -50,7 +50,7 @@ class OnboardingScreen extends StatelessWidget {
                     child: Center(
 
                       child: Image.asset(
-                        "assets/images/onboarding.png",
+                        "assets/images/onboard2.png",
                         fit: BoxFit.contain,
                       ),
 
