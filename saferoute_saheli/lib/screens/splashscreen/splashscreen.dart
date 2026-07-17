@@ -6,6 +6,8 @@ import 'package:saferoute_saheli/screens/splashscreen/bloc/splash_state.dart';
 import 'package:saferoute_saheli/screens/splashscreen/widgets/animated_background.dart';
 import 'package:saferoute_saheli/screens/splashscreen/widgets/logo_animation.dart';
 import 'package:saferoute_saheli/screens/splashscreen/widgets/luxury_card.dart';
+import 'package:saferoute_saheli/screens/onboarding/onboarding1/onboarding1.dart';
+import 'package:saferoute_saheli/screens/onboarding/onboarding1/bloc/onboarding1_bloc.dart';
 
 
 
@@ -45,12 +47,15 @@ class _SplashScreenState extends State<SplashScreen>
     return BlocListener<SplashBloc, SplashState>(
       listener: (context, state) {
         if (state is SplashCompleted) {
-          // Navigator.pushReplacement(
-          //   context,
-          //   MaterialPageRoute(
-          //     builder: (_) => const LoginScreen(),
-          //   ),
-          // );
+          Navigator.pushReplacement(
+            context,
+            MaterialPageRoute(
+              builder: (_) => BlocProvider(
+                create: (_) => Onboarding1Bloc(),
+                child: const Onboarding1Screen(),
+              ),
+            ),
+          );
         }
       },
       child: Scaffold(

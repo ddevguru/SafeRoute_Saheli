@@ -2,6 +2,8 @@ import 'package:flutter/material.dart';
 import 'package:flutter_bloc/flutter_bloc.dart';
 import 'package:saferoute_saheli/screens/onboarding/onboarding1/bloc/onboarding1_bloc.dart';
 import 'package:saferoute_saheli/screens/onboarding/onboarding1/widgets/next_button.dart';
+import 'package:saferoute_saheli/screens/onboarding/onboarding2/onboarding2.dart';
+import 'package:saferoute_saheli/screens/onboarding/onboarding2/bloc/onboarding_bloc.dart' as onboarding2_bloc;
 
 class Onboarding1Screen extends StatelessWidget {
   const Onboarding1Screen({super.key});
@@ -11,7 +13,15 @@ class Onboarding1Screen extends StatelessWidget {
     return BlocConsumer<Onboarding1Bloc, Onboarding1State>(
       listener: (context, state) {
         if (state is NavigateToNext) {
-          // Navigate to next onboarding screen or login
+          Navigator.pushReplacement(
+            context,
+            MaterialPageRoute(
+              builder: (_) => BlocProvider(
+                create: (_) => onboarding2_bloc.OnboardingBloc(),
+                child: const OnboardingScreen(),
+              ),
+            ),
+          );
         }
       },
       builder: (context, state) {
