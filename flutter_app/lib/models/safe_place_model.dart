@@ -46,6 +46,8 @@ class RouteOptionModel {
   final double safetyScore;
   final String? recommendation;
   final Map<String, dynamic> riskFactors;
+  final List<Map<String, double>> coordinates;
+  final List<String> steps;
 
   RouteOptionModel({
     required this.id,
@@ -55,9 +57,29 @@ class RouteOptionModel {
     required this.safetyScore,
     this.recommendation,
     this.riskFactors = const {},
+    this.coordinates = const [],
+    this.steps = const [],
   });
 
   factory RouteOptionModel.fromJson(Map<String, dynamic> json) {
+    List<Map<String, double>> coords = [];
+    if (json['coordinates'] is List) {
+      coords = (json['coordinates'] as List).map<Map<String, double>>((c) {
+        if (c is Map) {
+          return {
+            'lat': (c['lat'] as num?)?.toDouble() ?? 0.0,
+            'lng': (c['lng'] as num?)?.toDouble() ?? 0.0,
+          };
+        }
+        return {'lat': 0.0, 'lng': 0.0};
+      }).toList();
+    }
+
+    List<String> stepList = [];
+    if (json['steps'] is List) {
+      stepList = (json['steps'] as List).map((s) => s.toString()).toList();
+    }
+
     return RouteOptionModel(
       id: json['id'] ?? '',
       type: json['type'] ?? 'SAFETY_OPTIMIZED',
@@ -66,6 +88,8 @@ class RouteOptionModel {
       safetyScore: (json['safety_score'] as num?)?.toDouble() ?? 80.0,
       recommendation: json['recommendation'],
       riskFactors: json['risk_factors'] != null ? Map<String, dynamic>.from(json['risk_factors']) : {},
+      coordinates: coords,
+      steps: stepList,
     );
   }
 }

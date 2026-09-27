@@ -30,7 +30,7 @@ class _HomeDashboardScreenState extends State<HomeDashboardScreen> {
             triggerType: 'BUTTON',
             latitude: 28.6139,
             longitude: 77.2090,
-            batteryPercent: 78,
+            batteryPercent: 85,
           ),
         );
   }
@@ -70,6 +70,16 @@ class _HomeDashboardScreenState extends State<HomeDashboardScreen> {
           ),
           actions: [
             IconButton(
+              icon: const Icon(Icons.hub_outlined),
+              tooltip: 'Connect & Manage IoT Devices',
+              onPressed: () => Navigator.pushNamed(context, AppRoutes.devices),
+            ),
+            IconButton(
+              icon: const Icon(Icons.person_outline_rounded),
+              tooltip: 'My Profile & Medical Info',
+              onPressed: () => Navigator.pushNamed(context, AppRoutes.profile),
+            ),
+            IconButton(
               icon: const Icon(Icons.settings_outlined),
               tooltip: 'Privacy & Safety Settings',
               onPressed: () => Navigator.pushNamed(context, AppRoutes.privacySettings),
@@ -96,23 +106,37 @@ class _HomeDashboardScreenState extends State<HomeDashboardScreen> {
                     final userName = (state is AuthenticatedState && state.user != null)
                         ? state.user!.name.split(' ')[0]
                         : 'Saheli';
-                    return Column(
-                      crossAxisAlignment: CrossAxisAlignment.start,
+                    return Row(
+                      mainAxisAlignment: MainAxisAlignment.spaceBetween,
                       children: [
-                        Text(
-                          'Good Morning, $userName',
-                          style: const TextStyle(
-                            fontSize: 22,
-                            fontWeight: FontWeight.w700,
-                            color: AppColors.primary,
-                          ),
+                        Column(
+                          crossAxisAlignment: CrossAxisAlignment.start,
+                          children: [
+                            Text(
+                              'Good Morning, $userName',
+                              style: const TextStyle(
+                                fontSize: 22,
+                                fontWeight: FontWeight.w700,
+                                color: AppColors.primary,
+                              ),
+                            ),
+                            const SizedBox(height: 2),
+                            const Text(
+                              'Stay connected. Your safety circle is active.',
+                              style: TextStyle(
+                                fontSize: 13,
+                                color: AppColors.textSecondary,
+                              ),
+                            ),
+                          ],
                         ),
-                        const SizedBox(height: 2),
-                        const Text(
-                          'Stay connected. Your safety circle is active.',
-                          style: TextStyle(
-                            fontSize: 13,
-                            color: AppColors.textSecondary,
+                        InkWell(
+                          borderRadius: BorderRadius.circular(20),
+                          onTap: () => Navigator.pushNamed(context, AppRoutes.profile),
+                          child: CircleAvatar(
+                            radius: 20,
+                            backgroundColor: AppColors.primary.withValues(alpha: 0.1),
+                            child: const Icon(Icons.person, color: AppColors.primary, size: 22),
                           ),
                         ),
                       ],
@@ -121,35 +145,45 @@ class _HomeDashboardScreenState extends State<HomeDashboardScreen> {
                 ),
                 const SizedBox(height: 18),
 
-                // Device & Protection Overview Card
-                const StatusOverviewCard(
+                // Device & Protection Overview Card (Clickable to open Devices Screen!)
+                StatusOverviewCard(
                   isDeviceConnected: true,
-                  batteryPercent: 78,
-                  safetyScore: 82.0,
+                  batteryPercent: 85,
+                  safetyScore: 92.0,
                   guardianStatus: 'Mother ● Online',
                   isCameraLive: true,
                   currentLocationName: 'Central Safe Corridor',
+                  onTap: () => Navigator.pushNamed(context, AppRoutes.devices),
                 ),
-                const SizedBox(height: 32),
+                const SizedBox(height: 28),
 
                 // Central Large Emergency Button
                 EmergencyButton(
                   onTrigger: _onTriggerEmergency,
                 ),
-                const SizedBox(height: 32),
+                const SizedBox(height: 28),
 
                 // Quick Actions Header
-                const Text(
-                  'Quick Protection Actions',
-                  style: TextStyle(
-                    fontSize: 16,
-                    fontWeight: FontWeight.w700,
-                    color: AppColors.primary,
-                  ),
+                Row(
+                  mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                  children: [
+                    const Text(
+                      'Quick Protection Actions',
+                      style: TextStyle(
+                        fontSize: 16,
+                        fontWeight: FontWeight.w700,
+                        color: AppColors.primary,
+                      ),
+                    ),
+                    TextButton(
+                      onPressed: () => Navigator.pushNamed(context, AppRoutes.devices),
+                      child: const Text('IoT Devices ➔', style: TextStyle(fontSize: 12, fontWeight: FontWeight.bold)),
+                    ),
+                  ],
                 ),
-                const SizedBox(height: 14),
+                const SizedBox(height: 10),
 
-                // 5 Action Grid Tiles
+                // 8 Action Grid Tiles
                 GridView.count(
                   crossAxisCount: 3,
                   shrinkWrap: true,
@@ -164,10 +198,28 @@ class _HomeDashboardScreenState extends State<HomeDashboardScreen> {
                       onTap: () => Navigator.pushNamed(context, AppRoutes.safeRoute),
                     ),
                     QuickActionTile(
+                      title: 'IoT Devices',
+                      icon: Icons.hub_rounded,
+                      accentColor: AppColors.secondary,
+                      onTap: () => Navigator.pushNamed(context, AppRoutes.devices),
+                    ),
+                    QuickActionTile(
                       title: 'Live Camera',
                       icon: Icons.videocam_rounded,
                       accentColor: AppColors.emergency,
                       onTap: () => Navigator.pushNamed(context, AppRoutes.liveCamera),
+                    ),
+                    QuickActionTile(
+                      title: 'Trigger History',
+                      icon: Icons.history_rounded,
+                      accentColor: AppColors.textSecondary,
+                      onTap: () => Navigator.pushNamed(context, AppRoutes.emergencyHistory),
+                    ),
+                    QuickActionTile(
+                      title: 'My Profile',
+                      icon: Icons.person_outline_rounded,
+                      accentColor: AppColors.primary,
+                      onTap: () => Navigator.pushNamed(context, AppRoutes.profile),
                     ),
                     QuickActionTile(
                       title: 'My Guardians',
@@ -180,12 +232,6 @@ class _HomeDashboardScreenState extends State<HomeDashboardScreen> {
                       icon: Icons.local_police_rounded,
                       accentColor: AppColors.primary,
                       onTap: () => Navigator.pushNamed(context, AppRoutes.nearbyHelp),
-                    ),
-                    QuickActionTile(
-                      title: 'Emergency History',
-                      icon: Icons.history_rounded,
-                      accentColor: AppColors.textSecondary,
-                      onTap: () => Navigator.pushNamed(context, AppRoutes.emergencyHistory),
                     ),
                     QuickActionTile(
                       title: 'Privacy Settings',

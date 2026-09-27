@@ -13,6 +13,8 @@ import '../screens/safe_route_screen.dart';
 import '../screens/nearby_help_screen.dart';
 import '../screens/guardians_management_screen.dart';
 import '../screens/emergency_history_screen.dart';
+import '../screens/devices_management_screen.dart';
+import '../screens/profile_screen.dart';
 
 class AppRoutes {
   static const String splash = '/';
@@ -29,6 +31,8 @@ class AppRoutes {
   static const String nearbyHelp = '/nearby-help';
   static const String guardians = '/guardians';
   static const String emergencyHistory = '/emergency-history';
+  static const String devices = '/devices';
+  static const String profile = '/profile';
 
   static Map<String, WidgetBuilder> get routes {
     return {
@@ -49,6 +53,8 @@ class AppRoutes {
       nearbyHelp: (context) => const NearbyHelpScreen(),
       guardians: (context) => const GuardiansManagementScreen(),
       emergencyHistory: (context) => const EmergencyHistoryScreen(),
+      devices: (context) => const DevicesManagementScreen(),
+      profile: (context) => const ProfileScreen(),
     };
   }
 }

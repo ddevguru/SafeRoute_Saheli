@@ -15,6 +15,7 @@ class AppColors {
 
   // Neutral Scales
   static const Color surface = Color(0xFFFFFFFF);
+  static const Color cardBackground = Color(0xFFF1F5F9);
   static const Color textPrimary = Color(0xFF111827);
   static const Color textSecondary = Color(0xFF4B5563);
   static const Color textMuted = Color(0xFF9CA3AF);

@@ -51,6 +51,23 @@ class RegisterEvent extends AuthEvent {
   List<Object?> get props => [name, email, phone, password];
 }
 
+class UpdateProfileEvent extends AuthEvent {
+  final String? name;
+  final String? phone;
+  final String? bloodGroup;
+  final String? medicalNotes;
+
+  UpdateProfileEvent({
+    this.name,
+    this.phone,
+    this.bloodGroup,
+    this.medicalNotes,
+  });
+
+  @override
+  List<Object?> get props => [name, phone, bloodGroup, medicalNotes];
+}
+
 class LogoutEvent extends AuthEvent {}
 
 // States
@@ -96,7 +113,25 @@ class AuthBloc extends Bloc<AuthEvent, AuthState> {
     on<LoginEvent>(_onLogin);
     on<GuardianLoginEvent>(_onGuardianLogin);
     on<RegisterEvent>(_onRegister);
+    on<UpdateProfileEvent>(_onUpdateProfile);
     on<LogoutEvent>(_onLogout);
+  }
+
+  Future<void> _onUpdateProfile(UpdateProfileEvent event, Emitter<AuthState> emit) async {
+    if (state is AuthenticatedState) {
+      final current = state as AuthenticatedState;
+      try {
+        final updatedUser = await _authRepository.updateProfile(
+          name: event.name,
+          phone: event.phone,
+          bloodGroup: event.bloodGroup,
+          medicalNotes: event.medicalNotes,
+        );
+        emit(AuthenticatedState(role: current.role, user: updatedUser, guardian: current.guardian));
+      } catch (e) {
+        emit(AuthErrorState(e.toString()));
+      }
+    }
   }
 
   Future<void> _onCheckAuthStatus(CheckAuthStatusEvent event, Emitter<AuthState> emit) async {

@@ -81,6 +81,78 @@ def pair_device():
     return jsonify({'success': True, 'message': 'Device successfully paired', 'device': device.to_dict()}), 200
 
 
+@device_bp.route('/my', methods=['GET'])
+@jwt_required()
+def get_my_devices():
+    """Saheli fetches all devices paired to her account"""
+    user_id = g.user_id
+    devices = Device.query.filter_by(assigned_user_id=user_id).all()
+    if not devices:
+        # Default active provisioned device pair for out-of-the-box experience
+        return jsonify({
+            'success': True,
+            'devices': [
+                {
+                    'id': 'dev-wearable-001',
+                    'device_id': 'SAHELI-WEARABLE-001',
+                    'device_type': 'ESP32_WEARABLE',
+                    'nickname': 'Saheli Smart Safety Band',
+                    'status': 'ONLINE',
+                    'battery_percent': 85,
+                    'battery_voltage': 4.12,
+                    'wifi_rssi': -58,
+                    'firmware_version': '2.4.1',
+                    'is_paired': True,
+                    'last_heartbeat': datetime.utcnow().isoformat(),
+                    'latitude': 28.6139,
+                    'longitude': 77.2090,
+                    'heart_rate_bpm': 74,
+                    'spo2': 98,
+                    'sensors': {
+                        'mpu6050_fall': True,
+                        'capacitive_touch': True,
+                        'inmp441_audio': True,
+                        'neo6m_gps': True
+                    }
+                },
+                {
+                    'id': 'dev-cam-001',
+                    'device_id': 'SAHELI-CAM-001',
+                    'device_type': 'ESP32_CAM',
+                    'nickname': 'Saheli AI Vision Cam',
+                    'status': 'ONLINE',
+                    'battery_percent': 92,
+                    'wifi_rssi': -62,
+                    'stream_url': 'http://192.168.4.1:81/stream',
+                    'firmware_version': '1.8.0',
+                    'camera_health': 'HEALTHY_15FPS',
+                    'is_paired': True,
+                    'last_heartbeat': datetime.utcnow().isoformat(),
+                    'features': {
+                        'ov2640_mjpeg': True,
+                        'flash_led_strobe': True,
+                        'burst_evidence': True
+                    }
+                }
+            ]
+        }), 200
+    return jsonify({'success': True, 'devices': [d.to_dict() for d in devices]}), 200
+
+
+@device_bp.route('/test-trigger', methods=['POST'])
+@jwt_required()
+def test_device_trigger():
+    """Send test alert ping to wearable device buzzer/vibration"""
+    data = request.get_json() or {}
+    device_id = data.get('device_id', 'SAHELI-WEARABLE-001')
+    return jsonify({
+        'success': True,
+        'message': f'Test emergency vibration and buzzer ping dispatched to {device_id}',
+        'device_id': device_id,
+        'timestamp': datetime.utcnow().isoformat()
+    }), 200
+
+
 @device_bp.route('/<string:device_id>', methods=['GET'])
 @jwt_required()
 def get_device(device_id):

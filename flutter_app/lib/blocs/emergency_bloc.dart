@@ -2,6 +2,7 @@ import 'package:flutter_bloc/flutter_bloc.dart';
 import 'package:equatable/equatable.dart';
 import '../models/emergency_incident_model.dart';
 import '../repositories/emergency_repository.dart';
+import '../storage/offline_cache_service.dart';
 
 // Events
 abstract class EmergencyEvent extends Equatable {
@@ -103,8 +104,32 @@ class EmergencyBloc extends Bloc<EmergencyEvent, EmergencyState> {
         longitude: event.longitude,
         batteryPercent: event.batteryPercent,
       );
+      await OfflineCacheService.recordLocalIncident({
+        'id': incident.id,
+        'trigger_type': incident.triggerType,
+        'status': incident.status,
+        'started_at': incident.startedAt ?? DateTime.now().toIso8601String(),
+        'latitude': incident.latitude,
+        'longitude': incident.longitude,
+        'battery_percent': incident.batteryPercent,
+        'confidence': incident.confidence,
+        'device_id': incident.deviceId ?? 'SAHELI-WEARABLE-001',
+      });
       emit(EmergencyActiveState(incident));
     } catch (e) {
+      // Even if network fails, record local fallback incident
+      final localFallbackId = 'INC-LOCAL-${DateTime.now().millisecondsSinceEpoch}';
+      await OfflineCacheService.recordLocalIncident({
+        'id': localFallbackId,
+        'trigger_type': event.triggerType,
+        'status': 'ACTIVE',
+        'started_at': DateTime.now().toIso8601String(),
+        'latitude': event.latitude,
+        'longitude': event.longitude,
+        'battery_percent': event.batteryPercent,
+        'confidence': 1.0,
+        'device_id': 'SAHELI-WEARABLE-001',
+      });
       emit(EmergencyErrorState(e.toString()));
     }
   }

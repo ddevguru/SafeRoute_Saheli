@@ -219,4 +219,105 @@ class OfflineCacheService {
   static Future<void> clearPendingEmergencies() async {
     await _safeDelete(_keyPendingEmergencyQueue);
   }
+
+  static const String _keyLocalIncidentHistory = 'saheli_local_incident_history';
+
+  /// Records an incident locally so every trigger is preserved in history
+  static Future<void> recordLocalIncident(Map<String, dynamic> incident) async {
+    try {
+      final list = await getLocalIncidentHistory();
+      list.insert(0, incident);
+      // Keep most recent 50
+      if (list.length > 50) list.removeRange(50, list.length);
+      await _safeWrite(_keyLocalIncidentHistory, jsonEncode(list));
+    } catch (_) {}
+  }
+
+  /// Retrieves locally recorded incident triggers
+  static Future<List<Map<String, dynamic>>> getLocalIncidentHistory() async {
+    try {
+      final str = await _safeRead(_keyLocalIncidentHistory);
+      if (str != null && str.isNotEmpty) {
+        final List<dynamic> decoded = jsonDecode(str);
+        return decoded.map((e) => Map<String, dynamic>.from(e as Map)).toList();
+      }
+    } catch (_) {}
+    return [];
+  }
+
+  /// Default demonstration seed triggers showing each detection mechanism
+  static List<Map<String, dynamic>> getSeedIncidentHistory() {
+    return [
+      {
+        'id': 'INC-TOUCH-9821',
+        'trigger_type': 'TOUCH',
+        'trigger_label': 'Capacitive Touch 3-Second SOS',
+        'status': 'RESOLVED',
+        'started_at': '2026-09-27 23:45:10',
+        'resolved_at': 'Safe PIN Verified',
+        'latitude': 28.6139,
+        'longitude': 77.2090,
+        'battery_percent': 85,
+        'confidence': 0.98,
+        'device_id': 'SAHELI-WEARABLE-001',
+        'evidence_summary': 'Touch pad sustained press >3000ms. Dispatched GPS & SMS alerts.',
+      },
+      {
+        'id': 'INC-CLAP-9742',
+        'trigger_type': 'CLAP',
+        'trigger_label': 'Triple-Clap Acoustic Burst Pattern',
+        'status': 'RESOLVED',
+        'started_at': '2026-09-27 21:18:04',
+        'resolved_at': 'User Verified Safe',
+        'latitude': 28.6280,
+        'longitude': 77.2140,
+        'battery_percent': 88,
+        'confidence': 0.95,
+        'device_id': 'SAHELI-WEARABLE-001',
+        'evidence_summary': 'INMP441 detected 3 sharp acoustic transients in 1.4s. Camera burst fired.',
+      },
+      {
+        'id': 'INC-FALL-9610',
+        'trigger_type': 'MOTION_FALL',
+        'trigger_label': 'MPU6050 Free-Fall + Impact Anomaly',
+        'status': 'RESOLVED',
+        'started_at': '2026-09-27 18:32:15',
+        'resolved_at': 'Resolved by Guardian',
+        'latitude': 28.5494,
+        'longitude': 77.2001,
+        'battery_percent': 91,
+        'confidence': 0.92,
+        'device_id': 'SAHELI-WEARABLE-001',
+        'evidence_summary': '0.12g free-fall followed by 3.8g high-G impact spike & 5s immobility.',
+      },
+      {
+        'id': 'INC-STRUGGLE-9524',
+        'trigger_type': 'MOTION_STRUGGLE',
+        'trigger_label': 'High-G Struggle & Wrist Jerk Jerk',
+        'status': 'RESOLVED',
+        'started_at': '2026-09-26 22:10:48',
+        'resolved_at': 'Police Patrol Acknowledged',
+        'latitude': 28.6310,
+        'longitude': 77.2215,
+        'battery_percent': 74,
+        'confidence': 0.89,
+        'device_id': 'SAHELI-WEARABLE-001',
+        'evidence_summary': 'Repeated cyclical rotational acceleration >450 deg/s verified by ANFIS classifier.',
+      },
+      {
+        'id': 'INC-BUTTON-9402',
+        'trigger_type': 'BUTTON',
+        'trigger_label': 'Tactile Wearable Hardware SOS Button',
+        'status': 'RESOLVED',
+        'started_at': '2026-09-26 14:05:32',
+        'resolved_at': 'User Cancelled',
+        'latitude': 28.6145,
+        'longitude': 77.2085,
+        'battery_percent': 96,
+        'confidence': 1.0,
+        'device_id': 'SAHELI-WEARABLE-001',
+        'evidence_summary': 'Instant hardware button interrupt triggered immediate multi-channel dispatch.',
+      },
+    ];
+  }
 }

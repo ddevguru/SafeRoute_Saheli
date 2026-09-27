@@ -177,6 +177,8 @@ def update_profile():
     data = request.get_json() or {}
     if 'name' in data and data['name'].strip():
         user.name = data['name'].strip()
+    if 'phone' in data and data['phone'].strip():
+        user.phone = data['phone'].strip()
     if 'emergency_blood_group' in data:
         user.emergency_blood_group = data['emergency_blood_group']
     if 'medical_notes' in data:

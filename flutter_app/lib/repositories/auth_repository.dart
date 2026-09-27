@@ -74,6 +74,23 @@ class AuthRepository {
     }
   }
 
+  Future<UserModel> updateProfile({
+    String? name,
+    String? phone,
+    String? bloodGroup,
+    String? medicalNotes,
+  }) async {
+    final response = await _apiService.put('/auth/profile', body: {
+      if (name != null) 'name': name,
+      if (phone != null) 'phone': phone,
+      if (bloodGroup != null) 'emergency_blood_group': bloodGroup,
+      if (medicalNotes != null) 'medical_notes': medicalNotes,
+    });
+    final user = UserModel.fromJson(response['user']);
+    await SecureStorageService.saveUserData(response['user']);
+    return user;
+  }
+
   Future<void> logout() async {
     await SecureStorageService.clearAll();
   }
