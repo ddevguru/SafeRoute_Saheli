@@ -166,3 +166,39 @@ class RiskPrediction(db.Model):
     confidence = db.Column(db.Float, nullable=False)
     features_json = db.Column(db.JSON, nullable=True)
     predicted_at = db.Column(db.DateTime, default=datetime.utcnow)
+
+
+class SafeZone(db.Model):
+    """User-defined geo-fenced safe havens (Home, College, Office, Hostel)"""
+    __tablename__ = 'safe_zones'
+
+    id = db.Column(db.String(36), primary_key=True, default=generate_uuid)
+    user_id = db.Column(db.String(36), db.ForeignKey('users.id', ondelete='CASCADE'), nullable=False, index=True)
+    name = db.Column(db.String(100), nullable=False)
+    latitude = db.Column(db.Numeric(10, 7), nullable=False)
+    longitude = db.Column(db.Numeric(10, 7), nullable=False)
+    radius_meters = db.Column(db.Float, default=150.0)
+    curfew_start_hour = db.Column(db.Integer, nullable=True)
+    curfew_end_hour = db.Column(db.Integer, nullable=True)
+    notify_guardians_on_arrival = db.Column(db.Boolean, default=True)
+    notify_guardians_on_departure = db.Column(db.Boolean, default=False)
+    is_active = db.Column(db.Boolean, default=True)
+    created_at = db.Column(db.DateTime, default=datetime.utcnow)
+
+    user = db.relationship('User', backref=db.backref('safe_zones', cascade='all, delete-orphan'))
+
+    def to_dict(self) -> dict:
+        return {
+            'id': self.id,
+            'user_id': self.user_id,
+            'name': self.name,
+            'latitude': float(self.latitude),
+            'longitude': float(self.longitude),
+            'radius_meters': self.radius_meters,
+            'curfew_start_hour': self.curfew_start_hour,
+            'curfew_end_hour': self.curfew_end_hour,
+            'notify_guardians_on_arrival': self.notify_guardians_on_arrival,
+            'notify_guardians_on_departure': self.notify_guardians_on_departure,
+            'is_active': self.is_active,
+            'created_at': self.created_at.isoformat() if self.created_at else None,
+        }

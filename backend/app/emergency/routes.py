@@ -267,3 +267,95 @@ def receive_biometric_telemetry():
         'emergency_triggered': assessment['is_emergency'],
         'incident': incident_result
     }), 200
+
+
+@emergency_bp.route('/sensor-fusion-telemetry', methods=['POST'])
+@jwt_required(optional=True)
+def receive_sensor_fusion_telemetry():
+    """
+    Ingest multi-modal sensory streams from wearable IoT hardware:
+    Fuses Touch, Motion (IMU), Acoustic DSP, MAX30102 PPG, and ANFIS geo-risk.
+    Computes Bayesian Posterior Threat Probability to auto-escalate emergencies.
+    """
+    from ai_ml.models.sensor_fusion_engine import get_sensor_fusion_engine
+
+    data = request.get_json() or {}
+    user_id = getattr(g, 'user_id', None)
+    device_id = data.get('device_id')
+    device_secret = data.get('device_secret')
+
+    if not user_id and device_id and device_secret:
+        device = Device.query.filter_by(device_id=device_id).first()
+        if not device or not device.verify_secret(device_secret):
+            return jsonify({'success': False, 'error': 'Invalid device authentication'}), 401
+        if not device.assigned_user_id:
+            return jsonify({'success': False, 'error': 'Device is not paired to any Saheli account'}), 400
+        user_id = device.assigned_user_id
+
+    if not user_id:
+        return jsonify({'success': False, 'error': 'User identification is required'}), 401
+
+    touch_hold_ms = float(data.get('touch_hold_ms', 0.0))
+    accel_mag_g = float(data.get('accel_mag_g', 1.0))
+    gyro_mag_dps = float(data.get('gyro_mag_dps', 0.0))
+    is_fall = bool(data.get('is_fall', False))
+    is_struggle = bool(data.get('is_struggle', False))
+
+    is_scream = bool(data.get('is_scream', False))
+    is_keyword = bool(data.get('is_keyword', False))
+    is_clap = bool(data.get('is_clap', False))
+    audio_confidence = float(data.get('audio_confidence', 0.0))
+
+    heart_rate_bpm = float(data.get('heart_rate_bpm', 75.0))
+    spo2 = float(data.get('spo2', 98.0))
+    stress_score = float(data.get('stress_score', 10.0))
+    is_panic_tachycardia = bool(data.get('is_panic_tachycardia', False))
+    is_hypoxia = bool(data.get('is_hypoxia', False))
+
+    anfis_risk_score = float(data.get('anfis_risk_score', 25.0))
+    hour_of_day = int(data.get('hour_of_day', 14))
+
+    engine = get_sensor_fusion_engine()
+    assessment = engine.fuse_telemetry(
+        touch_hold_ms=touch_hold_ms,
+        accel_mag_g=accel_mag_g,
+        gyro_mag_dps=gyro_mag_dps,
+        is_fall=is_fall,
+        is_struggle=is_struggle,
+        is_scream=is_scream,
+        is_keyword=is_keyword,
+        is_clap=is_clap,
+        audio_confidence=audio_confidence,
+        heart_rate_bpm=heart_rate_bpm,
+        spo2=spo2,
+        stress_score=stress_score,
+        is_panic_tachycardia=is_panic_tachycardia,
+        is_hypoxia=is_hypoxia,
+        anfis_risk_score=anfis_risk_score,
+        hour_of_day=hour_of_day
+    )
+
+    incident_result = None
+    if assessment['is_emergency_triggered']:
+        latitude = float(data.get('latitude', 28.6139))
+        longitude = float(data.get('longitude', 77.2090))
+        battery_percent = int(data.get('battery_percent', 100))
+
+        socketio = current_app.extensions.get('socketio')
+        incident_result = EmergencyService.trigger_emergency(
+            user_id=user_id,
+            trigger_type='MULTI_SENSOR_FUSION',
+            latitude=latitude,
+            longitude=longitude,
+            device_id=device_id,
+            confidence=assessment['confidence'],
+            battery_percent=battery_percent,
+            socketio=socketio
+        )
+
+    return jsonify({
+        'success': True,
+        'assessment': assessment,
+        'emergency_triggered': assessment['is_emergency_triggered'],
+        'incident': incident_result
+    }), 200
