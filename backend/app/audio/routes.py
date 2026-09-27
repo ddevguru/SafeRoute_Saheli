@@ -123,9 +123,12 @@ def analyze_audio_stream():
 
 @audio_bp.route('/keyword', methods=['POST'])
 def detect_voice_keyword():
-    """Vocal keyword spotting for emergency distress phrases"""
+    """Vocal keyword spotting for emergency distress phrases (English + Vernacular)"""
+    from ai_ml.models.vernacular_distress_detector import get_vernacular_detector
+
     data = request.get_json() or {}
-    phrase = str(data.get('phrase', data.get('keyword', ''))).strip().upper()
+    phrase = str(data.get('phrase', data.get('keyword', ''))).strip()
+    phrase_upper = phrase.upper()
     
     emergency_phrases = {
         'HELP': 0.95,
@@ -142,10 +145,20 @@ def detect_voice_keyword():
     matched_phrase = None
 
     for target, conf in emergency_phrases.items():
-        if target in phrase or phrase == target:
+        if target in phrase_upper or phrase_upper == target:
             matched = True
             confidence = max(confidence, conf)
             matched_phrase = target
+
+    # Vernacular check if not matched by standard list
+    vernacular_eval = None
+    if not matched and phrase:
+        detector = get_vernacular_detector()
+        vernacular_eval = detector.evaluate_text_phrase(phrase)
+        if vernacular_eval["is_distress"]:
+            matched = True
+            confidence = vernacular_eval["confidence"]
+            matched_phrase = vernacular_eval["matched_keyword"]
 
     return jsonify({
         'success': True,
@@ -153,7 +166,64 @@ def detect_voice_keyword():
         'matched': matched,
         'matched_phrase': matched_phrase,
         'confidence': round(confidence, 2) if matched else 0.10,
-        'is_emergency': matched and (confidence >= 0.80)
+        'is_emergency': matched and (confidence >= 0.80),
+        'vernacular_analysis': vernacular_eval
+    }), 200
+
+
+@audio_bp.route('/vernacular-distress', methods=['POST'])
+@jwt_required(optional=True)
+def detect_vernacular_distress():
+    """
+    Multi-Lingual Audio Distress Evaluation Endpoint:
+    Processes vocal distress across Hindi, Bengali, Tamil, Telugu, Marathi, Kannada & English.
+    Fuses phonetic phrase recognition with acoustic scream energy.
+    """
+    from ai_ml.models.vernacular_distress_detector import get_vernacular_detector
+    from backend.app.services.emergency_service import EmergencyService
+
+    data = request.get_json() or {}
+    phrase = data.get('phrase') or data.get('transcript') or data.get('text')
+    rms = float(data.get('rms', 0.0))
+    spectral_centroid = float(data.get('spectral_centroid', 0.0))
+    zcr = float(data.get('zcr', 0.0))
+    peak = float(data.get('peak', 0.0))
+    auto_trigger = bool(data.get('auto_trigger', False))
+
+    detector = get_vernacular_detector()
+    assessment = detector.fuse_vernacular_distress(
+        text_phrase=phrase,
+        rms=rms,
+        spectral_centroid=spectral_centroid,
+        zcr=zcr,
+        peak=peak
+    )
+
+    incident_result = None
+    user_id = getattr(g, 'user_id', None) or data.get('user_id')
+
+    if assessment['is_distress'] and auto_trigger and user_id:
+        latitude = float(data.get('latitude', 28.6139))
+        longitude = float(data.get('longitude', 77.2090))
+        battery_percent = int(data.get('battery_percent', 100))
+        socketio = current_app.extensions.get('socketio')
+
+        incident_result = EmergencyService.trigger_emergency(
+            user_id=user_id,
+            trigger_type='VERNACULAR_VOICE',
+            latitude=latitude,
+            longitude=longitude,
+            confidence=assessment['confidence'],
+            battery_percent=battery_percent,
+            socketio=socketio
+        )
+
+    return jsonify({
+        'success': True,
+        'assessment': assessment,
+        'is_distress': assessment['is_distress'],
+        'emergency_triggered': incident_result is not None,
+        'incident': incident_result
     }), 200
 
 
@@ -164,4 +234,5 @@ def get_incident_audio(incident_id):
     records = AudioRecording.query.filter_by(incident_id=incident_id).all()
     results = [rec.to_dict() for rec in records]
     return jsonify({'success': True, 'audio_recordings': results}), 200
+
 
