@@ -478,13 +478,12 @@ void supervisorCoreTask(void* parameter) {
     while (true) {
         unsigned long now = millis();
 
-        // 1. Maintain WiFi Connection
-        if (WiFi.status() != WL_CONNECTED) {
+        // 1. Maintain WiFi Connection (if configured)
+        if (String(WIFI_SSID) != "YOUR_WIFI_NAME" && WiFi.status() != WL_CONNECTED) {
             static unsigned long lastReconnect = 0;
-            if (now - lastReconnect > 10000) {
+            if (now - lastReconnect > 20000) {
                 lastReconnect = now;
-                Serial.println("[WiFi] Reconnecting...");
-                WiFi.disconnect();
+                Serial.println("[WiFi STA] Reconnecting to router...");
                 WiFi.begin(WIFI_SSID, WIFI_PASSWORD);
             }
         }
@@ -576,66 +575,100 @@ void setup() {
         Serial.println("[Setup] Warning: INMP441 I2S Microphone initialization failed.");
     }
 
-    // 6. Connect to WiFi
-    Serial.printf("[WiFi] Connecting to: %s\n", WIFI_SSID);
-    WiFi.mode(WIFI_STA);
-    WiFi.begin(WIFI_SSID, WIFI_PASSWORD);
-    int attempts = 0;
-    while (WiFi.status() != WL_CONNECTED && attempts < 20) {
-        delay(500);
-        Serial.print(".");
-        attempts++;
-    }
-    if (WiFi.status() == WL_CONNECTED) {
-        Serial.println("\n[WiFi] Connected! IP Address: " + WiFi.localIP().toString());
-        sendCloudHeartbeat();
+    // 6. Connect to WiFi & Start SoftAP Direct Hotspot
+    WiFi.mode(WIFI_AP_STA);
+    WiFi.softAP("Saheli_Smart_Band", "12345678");
+    IPAddress apIP = WiFi.softAPIP(); // Typically 192.168.4.1
+    Serial.println("\n--------------------------------------------------");
+    Serial.println("[WiFi AP] SoftAP Hotspot Created: 'Saheli_Smart_Band'");
+    Serial.printf ("[WiFi AP] Hotspot Direct URL:     http://%s (Password: 12345678)\n", apIP.toString().c_str());
+    Serial.println("--------------------------------------------------");
 
-        // Register local HTTP endpoints for Mobile App on same Wi-Fi
-        localServer.on("/status", HTTP_GET, []() {
-            float v = readBatteryVoltage();
-            int pct = calculateBatteryPercent(v);
-            String json = "{";
-            json += "\"device_id\":\"" + String(DEVICE_ID) + "\",";
-            json += "\"status\":\"ONLINE\",";
-            json += "\"device_type\":\"ESP32_WEARABLE\",";
-            json += "\"nickname\":\"Saheli Smart Safety Band\",";
-            json += "\"battery_percent\":" + String(pct) + ",";
-            json += "\"battery_voltage\":" + String(v, 2) + ",";
-            json += "\"wifi_rssi\":" + String(WiFi.RSSI()) + ",";
-            json += "\"latitude\":" + String(currentGPS.latitude, 6) + ",";
-            json += "\"longitude\":" + String(currentGPS.longitude, 6) + ",";
-            json += "\"gps_fixed\":" + String(currentGPS.hasValidFix ? "true" : "false") + ",";
-            json += "\"emergency_active\":" + String(emergencyActive ? "true" : "false") + ",";
-            json += "\"firmware_version\":\"" + String(FIRMWARE_VERSION) + "\",";
-            json += "\"uptime_s\":" + String(millis() / 1000);
-            json += "}";
-            localServer.sendHeader("Access-Control-Allow-Origin", "*");
-            localServer.send(200, "application/json", json);
-        });
-
-        localServer.on("/ping", HTTP_GET, []() {
-            localServer.sendHeader("Access-Control-Allow-Origin", "*");
-            localServer.send(200, "application/json", "{\"pong\":true,\"device_id\":\"" + String(DEVICE_ID) + "\"}");
-        });
-
-        localServer.on("/test-alarm", HTTP_ANY, []() {
-            // Pulse buzzer and vibration motor for 1.5 seconds to confirm local connection
-            digitalWrite(PIN_BUZZER, HIGH);
-            digitalWrite(PIN_VIBRATION, HIGH);
-            digitalWrite(PIN_STATUS_LED, HIGH);
-            delay(1500);
-            digitalWrite(PIN_BUZZER, LOW);
-            digitalWrite(PIN_VIBRATION, LOW);
-            digitalWrite(PIN_STATUS_LED, LOW);
-            localServer.sendHeader("Access-Control-Allow-Origin", "*");
-            localServer.send(200, "application/json", "{\"success\":true,\"message\":\"Hardware siren and haptic motor activated on local Wi-Fi!\"}");
-        });
-
-        localServer.begin();
-        Serial.println("[WebServer] Local HTTP server listening at http://" + WiFi.localIP().toString() + ":80");
+    if (String(WIFI_SSID) != "YOUR_WIFI_NAME") {
+        Serial.printf("[WiFi STA] Connecting to Router: %s\n", WIFI_SSID);
+        WiFi.begin(WIFI_SSID, WIFI_PASSWORD);
+        int attempts = 0;
+        while (WiFi.status() != WL_CONNECTED && attempts < 15) {
+            delay(400);
+            Serial.print(".");
+            attempts++;
+        }
+        if (WiFi.status() == WL_CONNECTED) {
+            Serial.println("\n[WiFi STA] Connected! Router IP: " + WiFi.localIP().toString());
+            sendCloudHeartbeat();
+        } else {
+            Serial.println("\n[WiFi STA] Router not found. Operating via direct SoftAP at 192.168.4.1");
+        }
     } else {
-        Serial.println("\n[WiFi] Warning: Could not connect to WiFi. Continuing in offline mode.");
+        Serial.println("[WiFi STA] Notice: Set WIFI_SSID & WIFI_PASSWORD to connect directly to home router/cloud.");
+        Serial.println("[WiFi STA] Defaulting to Direct AP mode (Connect phone to 'Saheli_Smart_Band').");
     }
+
+    // Register local HTTP endpoints for Mobile App (accessible via SoftAP or Router IP)
+    localServer.on("/", HTTP_GET, []() {
+        float v = readBatteryVoltage();
+        int pct = calculateBatteryPercent(v);
+        String html = "<!DOCTYPE html><html><head><meta name='viewport' content='width=device-width, initial-scale=1'><title>Saheli Smart Band</title>";
+        html += "<style>body{font-family:-apple-system,BlinkMacSystemFont,sans-serif;background:#002350;color:#fff;text-align:center;padding:25px;}";
+        html += ".card{background:rgba(255,255,255,0.08);padding:20px;border-radius:18px;margin:20px auto;max-width:380px;border:1px solid rgba(255,255,255,0.15);}";
+        html += ".badge{background:#10B981;color:#fff;padding:4px 12px;border-radius:12px;font-size:12px;font-weight:bold;}";
+        html += ".btn{background:#D2AE39;color:#000;padding:12px 24px;border:none;border-radius:10px;font-weight:bold;text-decoration:none;display:inline-block;margin-top:15px;}";
+        html += "</style></head><body>";
+        html += "<h2>SafeRoute Saheli — Smart Band</h2>";
+        html += "<div class='card'>";
+        html += "<p><span class='badge'>HARDWARE ONLINE</span></p>";
+        html += "<p><b>Device ID:</b> " + String(DEVICE_ID) + "</p>";
+        html += "<p><b>Battery:</b> " + String(pct) + "% (" + String(v, 2) + "V)</p>";
+        html += "<p><b>GPS Fix:</b> " + String(currentGPS.hasValidFix ? "FIXED" : "SEARCHING...") + "</p>";
+        html += "<p><b>Emergency:</b> " + String(emergencyActive ? "<b style='color:#EF4444'>ACTIVE SOS</b>" : "NORMAL") + "</p>";
+        html += "<a class='btn' href='/test-alarm'>Test Hardware Alarm</a>";
+        html += "</div></body></html>";
+        localServer.sendHeader("Access-Control-Allow-Origin", "*");
+        localServer.send(200, "text/html", html);
+    });
+
+    localServer.on("/status", HTTP_GET, []() {
+        float v = readBatteryVoltage();
+        int pct = calculateBatteryPercent(v);
+        String json = "{";
+        json += "\"device_id\":\"" + String(DEVICE_ID) + "\",";
+        json += "\"status\":\"ONLINE\",";
+        json += "\"device_type\":\"ESP32_WEARABLE\",";
+        json += "\"nickname\":\"Saheli Smart Safety Band\",";
+        json += "\"battery_percent\":" + String(pct) + ",";
+        json += "\"battery_voltage\":" + String(v, 2) + ",";
+        json += "\"wifi_rssi\":" + String(WiFi.RSSI()) + ",";
+        json += "\"latitude\":" + String(currentGPS.latitude, 6) + ",";
+        json += "\"longitude\":" + String(currentGPS.longitude, 6) + ",";
+        json += "\"gps_fixed\":" + String(currentGPS.hasValidFix ? "true" : "false") + ",";
+        json += "\"emergency_active\":" + String(emergencyActive ? "true" : "false") + ",";
+        json += "\"firmware_version\":\"" + String(FIRMWARE_VERSION) + "\",";
+        json += "\"uptime_s\":" + String(millis() / 1000);
+        json += "}";
+        localServer.sendHeader("Access-Control-Allow-Origin", "*");
+        localServer.send(200, "application/json", json);
+    });
+
+    localServer.on("/ping", HTTP_GET, []() {
+        localServer.sendHeader("Access-Control-Allow-Origin", "*");
+        localServer.send(200, "application/json", "{\"pong\":true,\"device_id\":\"" + String(DEVICE_ID) + "\"}");
+    });
+
+    localServer.on("/test-alarm", HTTP_ANY, []() {
+        // Pulse buzzer and vibration motor for 1.5 seconds to confirm local connection
+        digitalWrite(PIN_BUZZER, HIGH);
+        digitalWrite(PIN_VIBRATION, HIGH);
+        digitalWrite(PIN_STATUS_LED, HIGH);
+        delay(1500);
+        digitalWrite(PIN_BUZZER, LOW);
+        digitalWrite(PIN_VIBRATION, LOW);
+        digitalWrite(PIN_STATUS_LED, LOW);
+        localServer.sendHeader("Access-Control-Allow-Origin", "*");
+        localServer.send(200, "application/json", "{\"success\":true,\"message\":\"Hardware siren and haptic motor activated on local Wi-Fi!\"}");
+    });
+
+    localServer.begin();
+    Serial.println("[WebServer] Local HTTP server listening on port 80 (SoftAP IP: " + apIP.toString() + ")");
 
     // 7. Spawn FreeRTOS Tasks across Dual Cores
     // Core 0: High-Priority Audio DSP Task

@@ -91,7 +91,7 @@ class EmergencyService:
         contacts = EmergencyContact.query.filter_by(user_id=user.id).order_by(EmergencyContact.priority_order).all()
 
         # Build emergency message & tracking URL
-        base_url = current_app.config.get('EXTERNAL_BASE_URL', 'http://localhost:5000')
+        base_url = current_app.config.get('EXTERNAL_BASE_URL') or os.getenv('EXTERNAL_BASE_URL') or 'https://saferoute-saheli-backend.onrender.com'
         tracking_url = f"{base_url}/track/{tracking_token}"
         gmaps_url = f"https://maps.google.com/?q={latitude},{longitude}"
 

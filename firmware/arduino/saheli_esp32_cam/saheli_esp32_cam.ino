@@ -380,38 +380,49 @@ void setup() {
     }
     Serial.println("[Setup] OV2640 Camera Hardware Initialized Successfully.");
 
-    // 2. Connect to WiFi
-    Serial.printf("[WiFi] Connecting to %s...\n", WIFI_SSID);
-    WiFi.mode(WIFI_STA);
+    // 2. Connect to WiFi & Start SoftAP Direct Hotspot
+    WiFi.mode(WIFI_AP_STA);
     WiFi.setSleep(false); // Maximize streaming bandwidth
-    WiFi.begin(WIFI_SSID, WIFI_PASSWORD);
+    WiFi.softAP("Saheli_Cam_Module", "12345678");
+    IPAddress camApIP = WiFi.softAPIP();
+    Serial.println("\n--------------------------------------------------");
+    Serial.println("[WiFi AP] SoftAP Hotspot Created: 'Saheli_Cam_Module'");
+    Serial.printf ("[WiFi AP] Direct Stream URL:      http://%s:%d/stream (Password: 12345678)\n", 
+                   camApIP.toString().c_str(), STREAM_PORT);
+    Serial.println("--------------------------------------------------");
 
-    int attempts = 0;
-    while (WiFi.status() != WL_CONNECTED && attempts < 25) {
-        delay(500);
-        Serial.print(".");
-        attempts++;
-    }
+    if (String(WIFI_SSID) != "YOUR_WIFI_NAME") {
+        Serial.printf("[WiFi STA] Connecting to router: %s...\n", WIFI_SSID);
+        WiFi.begin(WIFI_SSID, WIFI_PASSWORD);
 
-    if (WiFi.status() == WL_CONNECTED) {
-        Serial.println("\n[WiFi] Connected Successfully!");
-        Serial.printf("[WiFi] Live Video Stream URL: http://%s:%d/stream\n", 
-                      WiFi.localIP().toString().c_str(), STREAM_PORT);
-        Serial.printf("[WiFi] Still Snapshot URL:   http://%s:%d/capture\n", 
-                      WiFi.localIP().toString().c_str(), STREAM_PORT);
+        int attempts = 0;
+        while (WiFi.status() != WL_CONNECTED && attempts < 15) {
+            delay(400);
+            Serial.print(".");
+            attempts++;
+        }
+
+        if (WiFi.status() == WL_CONNECTED) {
+            Serial.println("\n[WiFi STA] Connected Successfully!");
+            Serial.printf("[WiFi STA] Live Video Stream URL: http://%s:%d/stream\n", 
+                          WiFi.localIP().toString().c_str(), STREAM_PORT);
+            Serial.printf("[WiFi STA] Still Snapshot URL:   http://%s:%d/capture\n", 
+                          WiFi.localIP().toString().c_str(), STREAM_PORT);
+            sendCameraHeartbeat();
+        } else {
+            Serial.println("\n[WiFi STA] Router not found. Camera accessible via direct SoftAP 'Saheli_Cam_Module'.");
+        }
     } else {
-        Serial.println("\n[WiFi] Warning: WiFi connection failed. Reconnection loop active.");
+        Serial.println("[WiFi STA] Notice: Set WIFI_SSID & WIFI_PASSWORD to connect directly to home router/cloud.");
+        Serial.println("[WiFi STA] Camera active in Direct AP mode at http://192.168.4.1:81/stream");
     }
 
-    // 3. Start Port 81 MJPEG Live Video Streaming Server
+    // 3. Start Port 81 MJPEG Live Video Streaming Server (Always Active)
     if (startStreamServer()) {
         Serial.printf("[Setup] MJPEG Streaming HTTP Server active on port %d.\n", STREAM_PORT);
     } else {
         Serial.println("[Setup] Warning: Could not start MJPEG HTTP server.");
     }
-
-    // 4. Initial Cloud Heartbeat
-    sendCameraHeartbeat();
 
     Serial.println("\n[Setup] System Ready. Awaiting streaming connections & triggers.\n");
     Serial.println("Available Serial Commands:");
@@ -424,18 +435,17 @@ void setup() {
 void loop() {
     unsigned long now = millis();
 
-    // 1. WiFi Auto-Reconnect
-    if (WiFi.status() != WL_CONNECTED) {
-        if (now - lastReconnectAttempt >= 10000) {
+    // 1. WiFi Auto-Reconnect (if router credentials were configured)
+    if (String(WIFI_SSID) != "YOUR_WIFI_NAME" && WiFi.status() != WL_CONNECTED) {
+        if (now - lastReconnectAttempt >= 20000) {
             lastReconnectAttempt = now;
-            Serial.println("[WiFi] Reconnecting...");
-            WiFi.disconnect();
+            Serial.println("[WiFi STA] Reconnecting to router...");
             WiFi.begin(WIFI_SSID, WIFI_PASSWORD);
         }
     }
 
-    // 2. Periodic Cloud Heartbeat (Every 30 seconds)
-    if (now - lastHeartbeatTime >= 30000) {
+    // 2. Periodic Cloud Heartbeat (Every 30 seconds if connected)
+    if (WiFi.status() == WL_CONNECTED && (now - lastHeartbeatTime >= 30000)) {
         lastHeartbeatTime = now;
         sendCameraHeartbeat();
     }

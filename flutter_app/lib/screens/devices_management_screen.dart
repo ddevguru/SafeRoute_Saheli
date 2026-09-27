@@ -554,24 +554,84 @@ class _DevicesManagementScreenState extends State<DevicesManagementScreen> {
           ),
           const SizedBox(height: 14),
 
-          // Ping & Verify Button
-          SizedBox(
-            width: double.infinity,
-            height: 44,
-            child: ElevatedButton.icon(
-              style: ElevatedButton.styleFrom(
-                backgroundColor: AppColors.primary,
-                shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(10)),
-              ),
-              icon: _isPinging
-                  ? const SizedBox(width: 16, height: 16, child: CircularProgressIndicator(color: Colors.white, strokeWidth: 2))
-                  : const Icon(Icons.sync_rounded, size: 18),
-              label: Text(
-                _isPinging ? 'Pinging Devices on Wi-Fi...' : 'Ping & Connect via Wi-Fi',
-                style: const TextStyle(fontWeight: FontWeight.bold),
-              ),
-              onPressed: _isPinging ? null : _pingAndConnectLocalWifi,
+          // Instructions Guide Card
+          Container(
+            padding: const EdgeInsets.all(12),
+            decoration: BoxDecoration(
+              color: AppColors.primary.withValues(alpha: 0.05),
+              borderRadius: BorderRadius.circular(12),
+              border: Border.all(color: AppColors.primary.withValues(alpha: 0.15)),
             ),
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Row(
+                  children: [
+                    const Icon(Icons.help_outline_rounded, color: AppColors.primary, size: 16),
+                    const SizedBox(width: 6),
+                    const Text(
+                      'Connection Steps (Mobile Data vs Wi-Fi)',
+                      style: TextStyle(fontWeight: FontWeight.bold, fontSize: 12, color: AppColors.primary),
+                    ),
+                  ],
+                ),
+                const SizedBox(height: 6),
+                const Text(
+                  '1. Power ON your ESP32 Wearable.\n'
+                  '2. On your phone, open Settings > Wi-Fi and connect to network:\n'
+                  '   • SSID: Saheli_Smart_Band (Password: 12345678)\n'
+                  '3. Return here, keep IP as 192.168.4.1, and tap "Ping & Connect".\n'
+                  'Note: If your phone is on 5G mobile data and not connected to the band\'s Wi-Fi, 192.168.4.1 will not be reachable.',
+                  style: TextStyle(fontSize: 11, color: AppColors.textSecondary, height: 1.4),
+                ),
+              ],
+            ),
+          ),
+          const SizedBox(height: 14),
+
+          // Ping & Verify Button + Cloud Sync Button
+          Row(
+            children: [
+              Expanded(
+                flex: 3,
+                child: SizedBox(
+                  height: 44,
+                  child: ElevatedButton.icon(
+                    style: ElevatedButton.styleFrom(
+                      backgroundColor: AppColors.primary,
+                      shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(10)),
+                    ),
+                    icon: _isPinging
+                        ? const SizedBox(width: 16, height: 16, child: CircularProgressIndicator(color: Colors.white, strokeWidth: 2))
+                        : const Icon(Icons.wifi_tethering_rounded, size: 18),
+                    label: Text(
+                      _isPinging ? 'Pinging...' : 'Ping Local Wi-Fi',
+                      style: const TextStyle(fontWeight: FontWeight.bold, fontSize: 12),
+                    ),
+                    onPressed: _isPinging ? null : _pingAndConnectLocalWifi,
+                  ),
+                ),
+              ),
+              const SizedBox(width: 8),
+              Expanded(
+                flex: 2,
+                child: SizedBox(
+                  height: 44,
+                  child: OutlinedButton.icon(
+                    style: OutlinedButton.styleFrom(
+                      side: const BorderSide(color: AppColors.secondary, width: 1.5),
+                      shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(10)),
+                    ),
+                    icon: const Icon(Icons.cloud_sync_rounded, color: AppColors.secondary, size: 18),
+                    label: const Text(
+                      'Cloud Sync',
+                      style: TextStyle(fontWeight: FontWeight.bold, fontSize: 12, color: AppColors.primary),
+                    ),
+                    onPressed: _fetchDevices,
+                  ),
+                ),
+              ),
+            ],
           ),
           if (localState.errorMessage != null && !localState.isWearableOnline) ...[
             const SizedBox(height: 10),
@@ -588,7 +648,7 @@ class _DevicesManagementScreenState extends State<DevicesManagementScreen> {
                   const SizedBox(width: 8),
                   Expanded(
                     child: Text(
-                      localState.errorMessage!,
+                      '${localState.errorMessage!} If your phone is on 5G/Cellular Data, connect to Wi-Fi "Saheli_Smart_Band" in phone settings first.',
                       style: const TextStyle(color: AppColors.emergency, fontSize: 11, fontWeight: FontWeight.w500),
                     ),
                   ),
