@@ -58,7 +58,7 @@ const char* FIRMWARE_VERSION  = "1.0.0-ARDUINO";
 #define PIN_I2S_SD            33    // INMP441 Serial Data Out (DIN)
 #define PIN_BATTERY_ADC       34    // Battery voltage divider (ADC1)
 #define PIN_BUZZER            14    // Piezo Buzzer (Transistor driven)
-#define PIN_VIBRATION         12    // Haptic Motor (MOSFET driven)
+#define PIN_VIBRATION         15    // Haptic Motor (Avoid GPIO 12 - MTDI pin causes flash 1.8V boot crash!)
 #define PIN_STATUS_LED        2     // Onboard Status LED
 
 // Detection Thresholds
@@ -79,7 +79,10 @@ const char* FIRMWARE_VERSION  = "1.0.0-ARDUINO";
 // =====================================================================================
 // 3. GLOBAL OBJECTS & DATA STRUCTURES
 // =====================================================================================
-HardwareSerial gpsSerial(2);
+#define gpsSerial Serial2 // Use pre-allocated UART2 to prevent duplicate driver abort crash
+
+bool hasMPU    = false; // Set to true only if MPU-6050 responds on I2C
+bool hasI2SMic = false; // Set to true only if INMP441 driver installs cleanly
 
 struct GPSData {
     double latitude       = 28.6139; // Default fallback: New Delhi
@@ -180,6 +183,7 @@ int calculateBatteryPercent(float voltage) {
 // =====================================================================================
 bool initMPU6050() {
     Wire.begin(PIN_I2C_SDA, PIN_I2C_SCL, 100000);
+    Wire.setTimeOut(50); // Prevent bus lockup if MPU6050 is not plugged in
     Wire.beginTransmission(MPU6050_ADDR);
     Wire.write(0x6B); // PWR_MGMT_1 register
     Wire.write(0x00); // Wake up MPU-6050
@@ -228,7 +232,7 @@ void checkMotionEvents(bool &outFall, bool &outStruggle, float &outAccelMag, flo
 }
 
 // =====================================================================================
-// 7. NEO-6M GPS NMEA PARSER (STANDALONE)
+// 7. NEO-6M GPS NMEA PARSER (STANDALONE NON-BLOCKING)
 // =====================================================================================
 void parseNMEALine(String line) {
     if (line.startsWith("$GPRMC") || line.startsWith("$GNRMC")) {
@@ -272,10 +276,22 @@ void parseNMEALine(String line) {
 }
 
 void pollGPS() {
+    static String nmeaBuffer = "";
     while (gpsSerial.available() > 0) {
-        String line = gpsSerial.readStringUntil('\n');
-        line.trim();
-        parseNMEALine(line);
+        char c = (char)gpsSerial.read();
+        if (c == '\n') {
+            nmeaBuffer.trim();
+            if (nmeaBuffer.length() > 0) {
+                parseNMEALine(nmeaBuffer);
+            }
+            nmeaBuffer = "";
+        } else if (c != '\r') {
+            if (nmeaBuffer.length() < 120) {
+                nmeaBuffer += c;
+            } else {
+                nmeaBuffer = ""; // Overflow guard
+            }
+        }
     }
 }
 
@@ -464,11 +480,15 @@ void sendGPSTelemetry() {
 void audioCoreTask(void* parameter) {
     Serial.println("[Core 0] Audio Clap Listening Task Active.");
     while (true) {
-        if (updateClapPattern()) {
-            Serial.println("[Core 0] >>> 3-CLAP EMERGENCY PATTERN DETECTED! <<<");
-            triggerEmergencySOS("CLAP", 0.95f);
+        if (hasI2SMic) {
+            if (updateClapPattern()) {
+                Serial.println("[Core 0] >>> 3-CLAP EMERGENCY PATTERN DETECTED! <<<");
+                triggerEmergencySOS("CLAP", 0.95f);
+            }
+            vTaskDelay(pdMS_TO_TICKS(5));
+        } else {
+            vTaskDelay(pdMS_TO_TICKS(500));
         }
-        vTaskDelay(pdMS_TO_TICKS(5));
     }
 }
 
@@ -488,7 +508,7 @@ void supervisorCoreTask(void* parameter) {
             }
         }
 
-        // 2. Poll GPS Module
+        // 2. Poll GPS Module (Non-blocking)
         pollGPS();
 
         // 3. TTP223 Touch SOS Check (1.5-second continuous press)
@@ -505,16 +525,18 @@ void supervisorCoreTask(void* parameter) {
             touchPressed = false;
         }
 
-        // 4. MPU-6050 Motion Anomaly Check
-        bool isFall = false, isStruggle = false;
-        float aMag = 0, gMag = 0;
-        checkMotionEvents(isFall, isStruggle, aMag, gMag);
-        if (isFall) {
-            Serial.printf("[Motion] Fall Detected! (Accel: %.2f G)\n", aMag);
-            triggerEmergencySOS("MOTION_FALL", 0.90f);
-        } else if (isStruggle) {
-            Serial.printf("[Motion] Struggle Detected! (Gyro: %.2f deg/s)\n", gMag);
-            triggerEmergencySOS("MOTION_STRUGGLE", 0.85f);
+        // 4. MPU-6050 Motion Anomaly Check (Only if sensor was detected)
+        if (hasMPU) {
+            bool isFall = false, isStruggle = false;
+            float aMag = 0, gMag = 0;
+            checkMotionEvents(isFall, isStruggle, aMag, gMag);
+            if (isFall) {
+                Serial.printf("[Motion] Fall Detected! (Accel: %.2f G)\n", aMag);
+                triggerEmergencySOS("MOTION_FALL", 0.90f);
+            } else if (isStruggle) {
+                Serial.printf("[Motion] Struggle Detected! (Gyro: %.2f deg/s)\n", gMag);
+                triggerEmergencySOS("MOTION_STRUGGLE", 0.85f);
+            }
         }
 
         // 5. Update Actuator Alarms
@@ -542,7 +564,7 @@ void supervisorCoreTask(void* parameter) {
 // =====================================================================================
 void setup() {
     Serial.begin(115200);
-    delay(1000);
+    delay(500);
 
     Serial.println("\n==================================================================");
     Serial.println("   SAFEROUTE SAHELI — MAIN ESP32 WEARABLE SAFETY DEVICE           ");
@@ -557,22 +579,24 @@ void setup() {
     // 2. Initialize TTP223 Capacitive Touch
     pinMode(PIN_TOUCH_SENSOR, INPUT);
 
-    // 3. Initialize MPU-6050 Motion Sensor
-    if (initMPU6050()) {
+    // 3. Initialize MPU-6050 Motion Sensor (Safe check)
+    hasMPU = initMPU6050();
+    if (hasMPU) {
         Serial.println("[Setup] MPU-6050 6-Axis Motion Sensor: OK");
     } else {
-        Serial.println("[Setup] Warning: MPU-6050 not detected on I2C (Check GPIO 21/22).");
+        Serial.println("[Setup] Note: MPU-6050 not detected on I2C. Motion alarms bypassed safely.");
     }
 
     // 4. Initialize NEO-6M GPS on UART2
     gpsSerial.begin(9600, SERIAL_8N1, PIN_GPS_RX, PIN_GPS_TX);
     Serial.println("[Setup] NEO-6M GPS Receiver (UART2): Initialized");
 
-    // 5. Initialize INMP441 I2S Microphone
-    if (initI2SMicrophone()) {
+    // 5. Initialize INMP441 I2S Microphone (Safe check)
+    hasI2SMic = initI2SMicrophone();
+    if (hasI2SMic) {
         Serial.println("[Setup] INMP441 I2S Digital Microphone: OK");
     } else {
-        Serial.println("[Setup] Warning: INMP441 I2S Microphone initialization failed.");
+        Serial.println("[Setup] Note: INMP441 I2S Microphone not detected. Acoustic clap listener bypassed safely.");
     }
 
     // 6. Connect to WiFi & Start SoftAP Direct Hotspot

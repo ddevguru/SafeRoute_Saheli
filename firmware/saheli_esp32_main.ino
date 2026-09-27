@@ -23,9 +23,12 @@
 #include <WiFi.h>
 #include <WiFiClientSecure.h>
 #include <HTTPClient.h>
+#include <WebServer.h>
 #include <Wire.h>
 #include <driver/i2s.h>
 #include <HardwareSerial.h>
+
+WebServer localServer(80);
 
 // =====================================================================================
 // 1. USER CONFIGURATION & CLOUD CREDENTIALS
@@ -55,7 +58,7 @@ const char* FIRMWARE_VERSION  = "1.0.0-ARDUINO";
 #define PIN_I2S_SD            33    // INMP441 Serial Data Out (DIN)
 #define PIN_BATTERY_ADC       34    // Battery voltage divider (ADC1)
 #define PIN_BUZZER            14    // Piezo Buzzer (Transistor driven)
-#define PIN_VIBRATION         12    // Haptic Motor (MOSFET driven)
+#define PIN_VIBRATION         15    // Haptic Motor (Avoid GPIO 12 - MTDI pin causes flash 1.8V boot crash!)
 #define PIN_STATUS_LED        2     // Onboard Status LED
 
 // Detection Thresholds
@@ -76,7 +79,10 @@ const char* FIRMWARE_VERSION  = "1.0.0-ARDUINO";
 // =====================================================================================
 // 3. GLOBAL OBJECTS & DATA STRUCTURES
 // =====================================================================================
-HardwareSerial gpsSerial(2);
+#define gpsSerial Serial2 // Use pre-allocated UART2 to prevent duplicate driver abort crash
+
+bool hasMPU    = false; // Set to true only if MPU-6050 responds on I2C
+bool hasI2SMic = false; // Set to true only if INMP441 driver installs cleanly
 
 struct GPSData {
     double latitude       = 28.6139; // Default fallback: New Delhi
@@ -177,6 +183,7 @@ int calculateBatteryPercent(float voltage) {
 // =====================================================================================
 bool initMPU6050() {
     Wire.begin(PIN_I2C_SDA, PIN_I2C_SCL, 100000);
+    Wire.setTimeOut(50); // Prevent bus lockup if MPU6050 is not plugged in
     Wire.beginTransmission(MPU6050_ADDR);
     Wire.write(0x6B); // PWR_MGMT_1 register
     Wire.write(0x00); // Wake up MPU-6050
@@ -225,20 +232,21 @@ void checkMotionEvents(bool &outFall, bool &outStruggle, float &outAccelMag, flo
 }
 
 // =====================================================================================
-// 7. NEO-6M GPS NMEA PARSER (STANDALONE)
+// 7. NEO-6M GPS NMEA PARSER (STANDALONE NON-BLOCKING)
 // =====================================================================================
 void parseNMEALine(String line) {
     if (line.startsWith("$GPRMC") || line.startsWith("$GNRMC")) {
+        // Example: $GPRMC,123519,A,2836.834,N,07712.540,E,022.4,084.4,230326,003.1,W*6A
         int comma1 = line.indexOf(',');
         int comma2 = line.indexOf(',', comma1 + 1);
-        int comma3 = line.indexOf(',', comma2 + 1);
+        int comma3 = line.indexOf(',', comma2 + 1); // Status ('A' = Valid, 'V' = Warning)
         
         if (comma3 > 0 && line.charAt(comma2 + 1) == 'A') {
-            int comma4 = line.indexOf(',', comma3 + 1);
-            int comma5 = line.indexOf(',', comma4 + 1);
-            int comma6 = line.indexOf(',', comma5 + 1);
-            int comma7 = line.indexOf(',', comma6 + 1);
-            int comma8 = line.indexOf(',', comma7 + 1);
+            int comma4 = line.indexOf(',', comma3 + 1); // Lat
+            int comma5 = line.indexOf(',', comma4 + 1); // N/S
+            int comma6 = line.indexOf(',', comma5 + 1); // Lon
+            int comma7 = line.indexOf(',', comma6 + 1); // E/W
+            int comma8 = line.indexOf(',', comma7 + 1); // Speed in knots
 
             String rawLat = line.substring(comma3 + 1, comma4);
             String latDir = line.substring(comma4 + 1, comma5);
@@ -247,6 +255,7 @@ void parseNMEALine(String line) {
             String rawSpeed = line.substring(comma7 + 1, comma8);
 
             if (rawLat.length() >= 4 && rawLon.length() >= 5) {
+                // Convert DDMM.MMMM to Decimal Degrees
                 double latDeg = rawLat.substring(0, 2).toDouble();
                 double latMin = rawLat.substring(2).toDouble();
                 double lat = latDeg + (latMin / 60.0);
@@ -259,7 +268,7 @@ void parseNMEALine(String line) {
 
                 currentGPS.latitude = lat;
                 currentGPS.longitude = lon;
-                currentGPS.speedKmph = rawSpeed.toFloat() * 1.852f;
+                currentGPS.speedKmph = rawSpeed.toFloat() * 1.852f; // Knots to km/h
                 currentGPS.hasValidFix = true;
             }
         }
@@ -267,10 +276,22 @@ void parseNMEALine(String line) {
 }
 
 void pollGPS() {
+    static String nmeaBuffer = "";
     while (gpsSerial.available() > 0) {
-        String line = gpsSerial.readStringUntil('\n');
-        line.trim();
-        parseNMEALine(line);
+        char c = (char)gpsSerial.read();
+        if (c == '\n') {
+            nmeaBuffer.trim();
+            if (nmeaBuffer.length() > 0) {
+                parseNMEALine(nmeaBuffer);
+            }
+            nmeaBuffer = "";
+        } else if (c != '\r') {
+            if (nmeaBuffer.length() < 120) {
+                nmeaBuffer += c;
+            } else {
+                nmeaBuffer = ""; // Overflow guard
+            }
+        }
     }
 }
 
@@ -333,7 +354,7 @@ bool updateClapPattern() {
                 Serial.printf("[Clap] Spike #%d detected! (gap: %lu ms)\n", clapCount, gap);
                 if (clapCount >= CLAP_COUNT_REQUIRED) {
                     clapCount = 0;
-                    return true;
+                    return true; // 3-Clap SOS Trigger!
                 }
             } else if (gap > CLAP_MAX_GAP_MS) {
                 clapCount = 1;
@@ -341,7 +362,7 @@ bool updateClapPattern() {
                 Serial.println("[Clap] Resetting pattern. Spike #1 started.");
             }
         }
-        delay(80);
+        delay(80); // Debounce acoustic decay
     }
 
     if (clapCount > 0 && (now - lastClapTime > CLAP_MAX_GAP_MS)) {
@@ -357,7 +378,7 @@ void sendCloudHeartbeat() {
     if (WiFi.status() != WL_CONNECTED) return;
 
     WiFiClientSecure client;
-    client.setInsecure();
+    client.setInsecure(); // Allows connection to Render's Let's Encrypt SSL
     HTTPClient http;
 
     String url = String(BACKEND_BASE_URL) + "/devices/heartbeat";
@@ -388,6 +409,7 @@ void triggerEmergencySOS(String triggerSource, float confidence) {
     Serial.printf("\n🚨 [EMERGENCY TRIGGERED] Reason: %s | Confidence: %.2f 🚨\n", 
                   triggerSource.c_str(), confidence);
 
+    // Immediate tactile & audio confirmation
     pulseHaptic(400);
 
     if (WiFi.status() != WL_CONNECTED) {
@@ -453,34 +475,40 @@ void sendGPSTelemetry() {
 // =====================================================================================
 // 10. FREERTOS DUAL-CORE MULTITASKING TASKS
 // =====================================================================================
+
+// Core 0: High-Frequency Audio DSP (Never misses acoustic clap pulses)
 void audioCoreTask(void* parameter) {
     Serial.println("[Core 0] Audio Clap Listening Task Active.");
     while (true) {
-        if (updateClapPattern()) {
-            Serial.println("[Core 0] >>> 3-CLAP EMERGENCY PATTERN DETECTED! <<<");
-            triggerEmergencySOS("CLAP", 0.95f);
+        if (hasI2SMic) {
+            if (updateClapPattern()) {
+                Serial.println("[Core 0] >>> 3-CLAP EMERGENCY PATTERN DETECTED! <<<");
+                triggerEmergencySOS("CLAP", 0.95f);
+            }
+            vTaskDelay(pdMS_TO_TICKS(5));
+        } else {
+            vTaskDelay(pdMS_TO_TICKS(500));
         }
-        vTaskDelay(pdMS_TO_TICKS(5));
     }
 }
 
+// Core 1: System Supervisor (Sensors, GPS, WiFi, Network, Alarms)
 void supervisorCoreTask(void* parameter) {
     Serial.println("[Core 1] Sensor & Network Supervisor Active.");
     while (true) {
         unsigned long now = millis();
 
-        // 1. Maintain WiFi Connection
-        if (WiFi.status() != WL_CONNECTED) {
+        // 1. Maintain WiFi Connection (if configured)
+        if (String(WIFI_SSID) != "YOUR_WIFI_NAME" && WiFi.status() != WL_CONNECTED) {
             static unsigned long lastReconnect = 0;
-            if (now - lastReconnect > 10000) {
+            if (now - lastReconnect > 20000) {
                 lastReconnect = now;
-                Serial.println("[WiFi] Reconnecting...");
-                WiFi.disconnect();
+                Serial.println("[WiFi STA] Reconnecting to router...");
                 WiFi.begin(WIFI_SSID, WIFI_PASSWORD);
             }
         }
 
-        // 2. Poll GPS Module
+        // 2. Poll GPS Module (Non-blocking)
         pollGPS();
 
         // 3. TTP223 Touch SOS Check (1.5-second continuous press)
@@ -491,22 +519,24 @@ void supervisorCoreTask(void* parameter) {
                 touchStartTime = now;
             } else if (now - touchStartTime >= TOUCH_HOLD_TRIGGER_MS) {
                 triggerEmergencySOS("TOUCH", 1.00f);
-                touchPressed = false;
+                touchPressed = false; // Reset after trigger
             }
         } else {
             touchPressed = false;
         }
 
-        // 4. MPU-6050 Motion Anomaly Check
-        bool isFall = false, isStruggle = false;
-        float aMag = 0, gMag = 0;
-        checkMotionEvents(isFall, isStruggle, aMag, gMag);
-        if (isFall) {
-            Serial.printf("[Motion] Fall Detected! (Accel: %.2f G)\n", aMag);
-            triggerEmergencySOS("MOTION_FALL", 0.90f);
-        } else if (isStruggle) {
-            Serial.printf("[Motion] Struggle Detected! (Gyro: %.2f deg/s)\n", gMag);
-            triggerEmergencySOS("MOTION_STRUGGLE", 0.85f);
+        // 4. MPU-6050 Motion Anomaly Check (Only if sensor was detected)
+        if (hasMPU) {
+            bool isFall = false, isStruggle = false;
+            float aMag = 0, gMag = 0;
+            checkMotionEvents(isFall, isStruggle, aMag, gMag);
+            if (isFall) {
+                Serial.printf("[Motion] Fall Detected! (Accel: %.2f G)\n", aMag);
+                triggerEmergencySOS("MOTION_FALL", 0.90f);
+            } else if (isStruggle) {
+                Serial.printf("[Motion] Struggle Detected! (Gyro: %.2f deg/s)\n", gMag);
+                triggerEmergencySOS("MOTION_STRUGGLE", 0.85f);
+            }
         }
 
         // 5. Update Actuator Alarms
@@ -534,7 +564,7 @@ void supervisorCoreTask(void* parameter) {
 // =====================================================================================
 void setup() {
     Serial.begin(115200);
-    delay(1000);
+    delay(500);
 
     Serial.println("\n==================================================================");
     Serial.println("   SAFEROUTE SAHELI — MAIN ESP32 WEARABLE SAFETY DEVICE           ");
@@ -542,51 +572,138 @@ void setup() {
     Serial.printf ("   Target Backend: %s\n", BACKEND_BASE_URL);
     Serial.println("==================================================================");
 
+    // 1. Initialize Actuators (Buzzer, Vibration, Status LED)
     initActuators();
     playStartupTone();
 
+    // 2. Initialize TTP223 Capacitive Touch
     pinMode(PIN_TOUCH_SENSOR, INPUT);
 
-    if (initMPU6050()) {
+    // 3. Initialize MPU-6050 Motion Sensor (Safe check)
+    hasMPU = initMPU6050();
+    if (hasMPU) {
         Serial.println("[Setup] MPU-6050 6-Axis Motion Sensor: OK");
     } else {
-        Serial.println("[Setup] Warning: MPU-6050 not detected on I2C (Check GPIO 21/22).");
+        Serial.println("[Setup] Note: MPU-6050 not detected on I2C. Motion alarms bypassed safely.");
     }
 
+    // 4. Initialize NEO-6M GPS on UART2
     gpsSerial.begin(9600, SERIAL_8N1, PIN_GPS_RX, PIN_GPS_TX);
     Serial.println("[Setup] NEO-6M GPS Receiver (UART2): Initialized");
 
-    if (initI2SMicrophone()) {
+    // 5. Initialize INMP441 I2S Microphone (Safe check)
+    hasI2SMic = initI2SMicrophone();
+    if (hasI2SMic) {
         Serial.println("[Setup] INMP441 I2S Digital Microphone: OK");
     } else {
-        Serial.println("[Setup] Warning: INMP441 I2S Microphone initialization failed.");
+        Serial.println("[Setup] Note: INMP441 I2S Microphone not detected. Acoustic clap listener bypassed safely.");
     }
 
-    Serial.printf("[WiFi] Connecting to: %s\n", WIFI_SSID);
-    WiFi.mode(WIFI_STA);
-    WiFi.begin(WIFI_SSID, WIFI_PASSWORD);
-    int attempts = 0;
-    while (WiFi.status() != WL_CONNECTED && attempts < 20) {
-        delay(500);
-        Serial.print(".");
-        attempts++;
-    }
-    if (WiFi.status() == WL_CONNECTED) {
-        Serial.println("\n[WiFi] Connected! IP Address: " + WiFi.localIP().toString());
-        sendCloudHeartbeat();
+    // 6. Connect to WiFi & Start SoftAP Direct Hotspot
+    WiFi.mode(WIFI_AP_STA);
+    WiFi.softAP("Saheli_Smart_Band", "12345678");
+    IPAddress apIP = WiFi.softAPIP(); // Typically 192.168.4.1
+    Serial.println("\n--------------------------------------------------");
+    Serial.println("[WiFi AP] SoftAP Hotspot Created: 'Saheli_Smart_Band'");
+    Serial.printf ("[WiFi AP] Hotspot Direct URL:     http://%s (Password: 12345678)\n", apIP.toString().c_str());
+    Serial.println("--------------------------------------------------");
+
+    if (String(WIFI_SSID) != "YOUR_WIFI_NAME") {
+        Serial.printf("[WiFi STA] Connecting to Router: %s\n", WIFI_SSID);
+        WiFi.begin(WIFI_SSID, WIFI_PASSWORD);
+        int attempts = 0;
+        while (WiFi.status() != WL_CONNECTED && attempts < 15) {
+            delay(400);
+            Serial.print(".");
+            attempts++;
+        }
+        if (WiFi.status() == WL_CONNECTED) {
+            Serial.println("\n[WiFi STA] Connected! Router IP: " + WiFi.localIP().toString());
+            sendCloudHeartbeat();
+        } else {
+            Serial.println("\n[WiFi STA] Router not found. Operating via direct SoftAP at 192.168.4.1");
+        }
     } else {
-        Serial.println("\n[WiFi] Warning: Could not connect to WiFi. Continuing in offline mode.");
+        Serial.println("[WiFi STA] Notice: Set WIFI_SSID & WIFI_PASSWORD to connect directly to home router/cloud.");
+        Serial.println("[WiFi STA] Defaulting to Direct AP mode (Connect phone to 'Saheli_Smart_Band').");
     }
 
-    // Core 0: Audio DSP Task
+    // Register local HTTP endpoints for Mobile App (accessible via SoftAP or Router IP)
+    localServer.on("/", HTTP_GET, []() {
+        float v = readBatteryVoltage();
+        int pct = calculateBatteryPercent(v);
+        String html = "<!DOCTYPE html><html><head><meta name='viewport' content='width=device-width, initial-scale=1'><title>Saheli Smart Band</title>";
+        html += "<style>body{font-family:-apple-system,BlinkMacSystemFont,sans-serif;background:#002350;color:#fff;text-align:center;padding:25px;}";
+        html += ".card{background:rgba(255,255,255,0.08);padding:20px;border-radius:18px;margin:20px auto;max-width:380px;border:1px solid rgba(255,255,255,0.15);}";
+        html += ".badge{background:#10B981;color:#fff;padding:4px 12px;border-radius:12px;font-size:12px;font-weight:bold;}";
+        html += ".btn{background:#D2AE39;color:#000;padding:12px 24px;border:none;border-radius:10px;font-weight:bold;text-decoration:none;display:inline-block;margin-top:15px;}";
+        html += "</style></head><body>";
+        html += "<h2>SafeRoute Saheli — Smart Band</h2>";
+        html += "<div class='card'>";
+        html += "<p><span class='badge'>HARDWARE ONLINE</span></p>";
+        html += "<p><b>Device ID:</b> " + String(DEVICE_ID) + "</p>";
+        html += "<p><b>Battery:</b> " + String(pct) + "% (" + String(v, 2) + "V)</p>";
+        html += "<p><b>GPS Fix:</b> " + String(currentGPS.hasValidFix ? "FIXED" : "SEARCHING...") + "</p>";
+        html += "<p><b>Emergency:</b> " + String(emergencyActive ? "<b style='color:#EF4444'>ACTIVE SOS</b>" : "NORMAL") + "</p>";
+        html += "<a class='btn' href='/test-alarm'>Test Hardware Alarm</a>";
+        html += "</div></body></html>";
+        localServer.sendHeader("Access-Control-Allow-Origin", "*");
+        localServer.send(200, "text/html", html);
+    });
+
+    localServer.on("/status", HTTP_GET, []() {
+        float v = readBatteryVoltage();
+        int pct = calculateBatteryPercent(v);
+        String json = "{";
+        json += "\"device_id\":\"" + String(DEVICE_ID) + "\",";
+        json += "\"status\":\"ONLINE\",";
+        json += "\"device_type\":\"ESP32_WEARABLE\",";
+        json += "\"nickname\":\"Saheli Smart Safety Band\",";
+        json += "\"battery_percent\":" + String(pct) + ",";
+        json += "\"battery_voltage\":" + String(v, 2) + ",";
+        json += "\"wifi_rssi\":" + String(WiFi.RSSI()) + ",";
+        json += "\"latitude\":" + String(currentGPS.latitude, 6) + ",";
+        json += "\"longitude\":" + String(currentGPS.longitude, 6) + ",";
+        json += "\"gps_fixed\":" + String(currentGPS.hasValidFix ? "true" : "false") + ",";
+        json += "\"emergency_active\":" + String(emergencyActive ? "true" : "false") + ",";
+        json += "\"firmware_version\":\"" + String(FIRMWARE_VERSION) + "\",";
+        json += "\"uptime_s\":" + String(millis() / 1000);
+        json += "}";
+        localServer.sendHeader("Access-Control-Allow-Origin", "*");
+        localServer.send(200, "application/json", json);
+    });
+
+    localServer.on("/ping", HTTP_GET, []() {
+        localServer.sendHeader("Access-Control-Allow-Origin", "*");
+        localServer.send(200, "application/json", "{\"pong\":true,\"device_id\":\"" + String(DEVICE_ID) + "\"}");
+    });
+
+    localServer.on("/test-alarm", HTTP_ANY, []() {
+        // Pulse buzzer and vibration motor for 1.5 seconds to confirm local connection
+        digitalWrite(PIN_BUZZER, HIGH);
+        digitalWrite(PIN_VIBRATION, HIGH);
+        digitalWrite(PIN_STATUS_LED, HIGH);
+        delay(1500);
+        digitalWrite(PIN_BUZZER, LOW);
+        digitalWrite(PIN_VIBRATION, LOW);
+        digitalWrite(PIN_STATUS_LED, LOW);
+        localServer.sendHeader("Access-Control-Allow-Origin", "*");
+        localServer.send(200, "application/json", "{\"success\":true,\"message\":\"Hardware siren and haptic motor activated on local Wi-Fi!\"}");
+    });
+
+    localServer.begin();
+    Serial.println("[WebServer] Local HTTP server listening on port 80 (SoftAP IP: " + apIP.toString() + ")");
+
+    // 7. Spawn FreeRTOS Tasks across Dual Cores
+    // Core 0: High-Priority Audio DSP Task
     xTaskCreatePinnedToCore(
         audioCoreTask,
         "AudioCoreTask",
         8192,
         NULL,
-        2,
+        2, // Priority
         &audioTaskHandle,
-        0
+        0  // Pin to Core 0
     );
 
     // Core 1: System Supervisor Task
@@ -595,9 +712,9 @@ void setup() {
         "SupervisorCoreTask",
         8192,
         NULL,
-        1,
+        1, // Priority
         &supervisorTaskHandle,
-        1
+        1  // Pin to Core 1
     );
 
     Serial.println("[Setup] System Initialization Complete. Wearable Active.\n");
@@ -609,6 +726,10 @@ void setup() {
 }
 
 void loop() {
+    // Service local Wi-Fi HTTP requests from mobile app on same network
+    localServer.handleClient();
+
+    // Process Serial Testing Commands
     if (Serial.available()) {
         char cmd = (char)Serial.read();
         switch (cmd) {
@@ -635,5 +756,6 @@ void loop() {
         }
     }
 
-    delay(100);
+    // FreeRTOS tasks handle all sensing, audio, and networking.
+    delay(20);
 }
