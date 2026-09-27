@@ -1,0 +1,87 @@
+services:
+  db:
+    image: mysql:8.0
+    container_name: saferoute_mysql_prod
+    restart: always
+    environment:
+      MYSQL_ROOT_PASSWORD: ${MYSQL_ROOT_PASSWORD:-SaheliRoot2026!}
+      MYSQL_DATABASE: ${MYSQL_DATABASE:-saferoute_saheli}
+      MYSQL_USER: ${MYSQL_USER:-saheli_prod}
+      MYSQL_PASSWORD: ${MYSQL_PASSWORD:-SaheliSecurePass2026!}
+    volumes:
+      - mysql_prod_data:/var/lib/mysql
+      - ../database/schema.sql:/docker-entrypoint-initdb.d/01_schema.sql
+      - ../database/seed_data.sql:/docker-entrypoint-initdb.d/02_seed.sql
+    networks:
+      - saheli_prod_network
+    healthcheck:
+      test: ["CMD", "mysqladmin", "ping", "-h", "localhost"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+
+  redis:
+    image: redis:7-alpine
+    container_name: saferoute_redis_prod
+    restart: always
+    command: redis-server --appendonly yes
+    volumes:
+      - redis_prod_data:/data
+    networks:
+      - saheli_prod_network
+
+  backend:
+    build:
+      context: ..
+      dockerfile: backend/Dockerfile
+    container_name: saferoute_backend_prod
+    restart: always
+    environment:
+      - FLASK_ENV=production
+      - DATABASE_URL=mysql+pymysql://${MYSQL_USER:-saheli_prod}:${MYSQL_PASSWORD:-SaheliSecurePass2026!}@db:3306/${MYSQL_DATABASE:-saferoute_saheli}
+      - REDIS_URL=redis://redis:6379/0
+      - JWT_SECRET=${JWT_SECRET:-saheli_production_super_jwt_secret_2026}
+      - SECRET_KEY=${SECRET_KEY:-saheli_production_flask_secret_2026}
+      - TEST_MODE=false
+    volumes:
+      - evidence_storage:/app/uploads
+    depends_on:
+      db:
+        condition: service_healthy
+    networks:
+      - saheli_prod_network
+
+  admin:
+    build:
+      context: ../admin_panel
+      dockerfile: Dockerfile
+    container_name: saferoute_admin_prod
+    restart: always
+    depends_on:
+      - backend
+    networks:
+      - saheli_prod_network
+
+  nginx:
+    image: nginx:alpine
+    container_name: saferoute_gateway
+    restart: always
+    ports:
+      - "80:80"
+    volumes:
+      - ./nginx/nginx.conf:/etc/nginx/nginx.conf:ro
+      - evidence_storage:/app/uploads:ro
+    depends_on:
+      - backend
+      - admin
+    networks:
+      - saheli_prod_network
+
+volumes:
+  mysql_prod_data:
+  redis_prod_data:
+  evidence_storage:
+
+networks:
+  saheli_prod_network:
+    driver: bridge

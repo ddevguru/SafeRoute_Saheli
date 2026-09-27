@@ -1,0 +1,76 @@
+services:
+  db:
+    image: mysql:8.0
+    container_name: saferoute_mysql
+    restart: always
+    environment:
+      MYSQL_ROOT_PASSWORD: rootpassword
+      MYSQL_DATABASE: saferoute_saheli
+      MYSQL_USER: saheli_user
+      MYSQL_PASSWORD: saheli_password
+    ports:
+      - "3306:3306"
+    volumes:
+      - mysql_data:/var/lib/mysql
+      - ./database/schema.sql:/docker-entrypoint-initdb.d/01_schema.sql
+      - ./database/seed_data.sql:/docker-entrypoint-initdb.d/02_seed.sql
+    networks:
+      - saheli_network
+    healthcheck:
+      test: ["CMD", "mysqladmin", "ping", "-h", "localhost", "-u", "root", "-prootpassword"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+
+  redis:
+    image: redis:7-alpine
+    container_name: saferoute_redis
+    restart: always
+    ports:
+      - "6379:6379"
+    networks:
+      - saheli_network
+
+  backend:
+    build:
+      context: .
+      dockerfile: backend/Dockerfile
+    container_name: saferoute_backend
+    restart: always
+    environment:
+      - FLASK_ENV=development
+      - TEST_MODE=true
+      - DATABASE_URL=mysql+pymysql://saheli_user:saheli_password@db:3306/saferoute_saheli
+      - REDIS_URL=redis://redis:6379/0
+      - JWT_SECRET=super_secret_jwt_key_safe_route_saheli_2026
+      - SECRET_KEY=super_secret_flask_key_safe_route_saheli_2026
+    ports:
+      - "5000:5000"
+    depends_on:
+      db:
+        condition: service_healthy
+    networks:
+      - saheli_network
+
+  admin:
+    build:
+      context: ./admin_panel
+      dockerfile: Dockerfile
+    container_name: saferoute_admin
+    restart: always
+    ports:
+      - "3000:3000"
+    environment:
+      - REACT_APP_API_URL=http://localhost:5000/api
+      - REACT_APP_WS_URL=http://localhost:5000
+    depends_on:
+      - backend
+    networks:
+      - saheli_network
+
+volumes:
+  mysql_data:
+
+networks:
+  saheli_network:
+    driver: bridge
