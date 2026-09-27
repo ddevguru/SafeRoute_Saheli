@@ -3,9 +3,15 @@ class AppConfig {
   static const String tagline = 'Stay Connected. Stay Aware. Stay Safe.';
   static const String appVersion = '1.0.0';
 
-  // Base API URL (Auto-selects 10.0.2.2 for Android Emulator, localhost for Desktop/Web)
-  static String baseUrl = 'http://127.0.0.1:5000/api';
-  static String wsUrl = 'http://127.0.0.1:5000';
+  // Live Production Backend URL on Render
+  static String baseUrl = 'https://saferoute-saheli-backend.onrender.com/api';
+  static String wsUrl = 'https://saferoute-saheli-backend.onrender.com';
+
+  // Fallback for Local Development & Testing:
+  static void setLocalDevelopmentHost() {
+    baseUrl = 'http://127.0.0.1:5000/api';
+    wsUrl = 'http://127.0.0.1:5000';
+  }
 
   // Fallback for Android Emulator:
   static void setAndroidEmulatorHost() {

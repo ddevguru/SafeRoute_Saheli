@@ -1,7 +1,26 @@
+buildscript {
+    repositories {
+        google()
+        mavenCentral()
+        gradlePluginPortal()
+    }
+}
+
 allprojects {
     repositories {
         google()
         mavenCentral()
+        gradlePluginPortal()
+    }
+}
+
+subprojects {
+    project.buildscript {
+        repositories {
+            google()
+            mavenCentral()
+            gradlePluginPortal()
+        }
     }
 }
 
