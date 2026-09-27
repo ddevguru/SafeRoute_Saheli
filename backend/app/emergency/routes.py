@@ -359,3 +359,77 @@ def receive_sensor_fusion_telemetry():
         'emergency_triggered': assessment['is_emergency_triggered'],
         'incident': incident_result
     }), 200
+
+
+@emergency_bp.route('/<string:incident_id>/smart-verify', methods=['POST'])
+@jwt_required()
+def smart_verify_incident(incident_id):
+    """
+    Real-time AI False Alarm verification evaluation during 15-second grace window.
+    Evaluates gait stability, biometric recovery, and speech transcripts.
+    """
+    from backend.app.services.smart_cancel_service import SmartCancelService
+
+    data = request.get_json() or {}
+    motion_samples = data.get('motion_samples')
+    heart_rate_bpm = float(data.get('heart_rate_bpm', 75.0))
+    baseline_bpm = float(data.get('baseline_bpm', 75.0))
+    stress_score = float(data.get('stress_score', 20.0))
+    speech_transcript = data.get('speech_transcript')
+    entered_pin = data.get('pin') or data.get('entered_pin')
+
+    result = SmartCancelService.evaluate_incident(
+        incident_id=incident_id,
+        motion_samples=motion_samples,
+        heart_rate_bpm=heart_rate_bpm,
+        baseline_bpm=baseline_bpm,
+        stress_score=stress_score,
+        speech_transcript=speech_transcript,
+        entered_pin=entered_pin
+    )
+    return jsonify(result), (200 if result.get('success') else 400)
+
+
+@emergency_bp.route('/<string:incident_id>/smart-cancel', methods=['POST'])
+@jwt_required()
+def smart_cancel_incident(incident_id):
+    """
+    Smart cancellation endpoint with Covert Duress Protocol:
+    - Normal PIN + calm state -> cancels incident and logs false alarm.
+    - Covert Duress PIN (e.g. 9999 or reversed PIN) -> displays success on victim's screen,
+      while secretly escalating incident to police with DURESS alert!
+    """
+    from backend.app.services.smart_cancel_service import SmartCancelService
+
+    user_id = g.user_id
+    data = request.get_json() or {}
+    entered_pin = data.get('pin') or data.get('entered_pin')
+    speech_transcript = data.get('speech_transcript')
+    motion_samples = data.get('motion_samples')
+    heart_rate_bpm = float(data.get('heart_rate_bpm', 75.0))
+
+    if not entered_pin:
+        return jsonify({'success': False, 'error': 'Cancellation PIN is required'}), 400
+
+    socketio = current_app.extensions.get('socketio')
+    result = SmartCancelService.process_smart_cancel(
+        incident_id=incident_id,
+        user_id=user_id,
+        entered_pin=entered_pin,
+        speech_transcript=speech_transcript,
+        motion_samples=motion_samples,
+        heart_rate_bpm=heart_rate_bpm,
+        socketio=socketio
+    )
+    return jsonify(result), (200 if result.get('success') else 400)
+
+
+@emergency_bp.route('/<string:incident_id>/verification-status', methods=['GET'])
+@jwt_required()
+def get_verification_status(incident_id):
+    """Query remaining grace window seconds and current verification stage."""
+    from backend.app.services.smart_cancel_service import SmartCancelService
+
+    result = SmartCancelService.get_verification_status(incident_id)
+    return jsonify(result), (200 if result.get('success') else 400)
+
