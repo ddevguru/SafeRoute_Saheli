@@ -15,32 +15,44 @@ class _OnboardingScreenState extends State<OnboardingScreen> {
 
   final List<Map<String, dynamic>> _pages = [
     {
+      'badge': 'SMART WEARABLE & AI VISION',
+      'badgeIcon': Icons.watch_rounded,
+      'badgeColor': AppColors.primary,
       'title': 'Your Safety, Always Connected',
-      'subtitle': 'Equipped with smart wearable sensors, touch triggers, motion analysis, and real-time battery tracking.',
-      'icon': Icons.watch_rounded,
+      'subtitle': 'Equipped with smart wearable sensors, capacitive touch SOS, motion analysis, and real-time battery tracking.',
+      'image': 'assets/images/onboarding_iot.jpg',
     },
     {
-      'title': 'Instant Emergency Alerts',
-      'subtitle': 'Trigger protection effortlessly through capacitive touch, vocal "HELP" keyword detection, or 3 rapid claps.',
-      'icon': Icons.notifications_active_rounded,
+      'badge': 'AI NEURO-FUZZY NAVIGATOR',
+      'badgeIcon': Icons.alt_route_rounded,
+      'badgeColor': Color(0xFF0284C7),
+      'title': 'Navigate Safest City Corridors',
+      'subtitle': 'AI-driven route planner computes real-time street illumination, CCTV density, and police proximity to keep your journey secure.',
+      'image': 'assets/images/onboarding_route.jpg',
     },
     {
-      'title': 'Your Guardian Is Always Connected',
-      'subtitle': 'Keep family informed with live GPS location tracking, secure live camera access, and automated SMS & voice calls.',
-      'icon': Icons.family_restroom_rounded,
+      'badge': '24/7 GUARDIAN CIRCLE',
+      'badgeIcon': Icons.family_restroom_rounded,
+      'badgeColor': AppColors.success,
+      'title': 'Loved Ones Always Connected',
+      'subtitle': 'Live GPS corridor tracking, wearable battery monitoring, and automated multi-channel SMS & voice alerts to your trusted family circle.',
+      'image': 'assets/images/onboarding_guardian.jpg',
     },
     {
-      'title': 'Find a Safer Route',
-      'subtitle': 'Navigate with confidence using AI Neuro-Fuzzy risk predictions, well-lit paths, and proximity to nearest police booths.',
-      'icon': Icons.map_rounded,
+      'badge': 'INSTANT SOS DISPATCH',
+      'badgeIcon': Icons.warning_rounded,
+      'badgeColor': AppColors.emergency,
+      'title': 'Immediate Help When You Need It',
+      'subtitle': 'Trigger protection instantly through capacitive touch, triple clap, or hardware SOS button with Section 65B forensic cryptographic lock.',
+      'image': 'assets/images/onboarding_sos.jpg',
     },
   ];
 
   void _onNext() {
     if (_currentIndex < _pages.length - 1) {
       _pageController.nextPage(
-        duration: const Duration(milliseconds: 300),
-        curve: Curves.easeInOut,
+        duration: const Duration(milliseconds: 350),
+        curve: Curves.easeInOutCubic,
       );
     } else {
       Navigator.pushReplacementNamed(context, AppRoutes.login);
@@ -54,9 +66,10 @@ class _OnboardingScreenState extends State<OnboardingScreen> {
   @override
   Widget build(BuildContext context) {
     return Scaffold(
-      backgroundColor: AppColors.background,
+      backgroundColor: Colors.white,
       appBar: AppBar(
         backgroundColor: Colors.transparent,
+        elevation: 0,
         actions: [
           if (_currentIndex < _pages.length - 1)
             TextButton(
@@ -65,8 +78,8 @@ class _OnboardingScreenState extends State<OnboardingScreen> {
                 'Skip',
                 style: TextStyle(
                   color: AppColors.textSecondary,
-                  fontWeight: FontWeight.w600,
-                  fontSize: 15,
+                  fontWeight: FontWeight.w700,
+                  fontSize: 14,
                 ),
               ),
             ),
@@ -75,6 +88,7 @@ class _OnboardingScreenState extends State<OnboardingScreen> {
       body: SafeArea(
         child: Column(
           children: [
+            // PageView with Hero Images & Content
             Expanded(
               child: PageView.builder(
                 controller: _pageController,
@@ -84,42 +98,100 @@ class _OnboardingScreenState extends State<OnboardingScreen> {
                 },
                 itemBuilder: (context, index) {
                   final page = _pages[index];
-                  return Padding(
-                    padding: const EdgeInsets.symmetric(horizontal: 28),
+                  final badgeColor = page['badgeColor'] as Color;
+
+                  return SingleChildScrollView(
+                    padding: const EdgeInsets.symmetric(horizontal: 24, vertical: 8),
                     child: Column(
-                      mainAxisAlignment: MainAxisAlignment.center,
+                      crossAxisAlignment: CrossAxisAlignment.center,
                       children: [
+                        // Hero Image Container with Rounded Border and Shadow
                         Container(
-                          width: 140,
-                          height: 140,
+                          width: double.infinity,
+                          height: 290,
                           decoration: BoxDecoration(
-                            shape: BoxShape.circle,
-                            color: AppColors.primary.withValues(alpha: 0.06),
-                            border: Border.all(color: AppColors.secondary.withValues(alpha: 0.3), width: 2),
+                            borderRadius: BorderRadius.circular(24),
+                            boxShadow: [
+                              BoxShadow(
+                                color: Colors.black.withValues(alpha: 0.08),
+                                blurRadius: 20,
+                                offset: const Offset(0, 8),
+                              ),
+                            ],
+                            border: Border.all(
+                              color: AppColors.borderLight,
+                              width: 1,
+                            ),
                           ),
-                          child: Icon(
-                            page['icon'] as IconData,
-                            size: 64,
-                            color: AppColors.primary,
+                          child: ClipRRect(
+                            borderRadius: BorderRadius.circular(24),
+                            child: Image.asset(
+                              page['image'] as String,
+                              fit: BoxFit.cover,
+                              errorBuilder: (context, error, stackTrace) {
+                                return Container(
+                                  color: AppColors.cardBackground,
+                                  child: Center(
+                                    child: Icon(
+                                      page['badgeIcon'] as IconData,
+                                      size: 72,
+                                      color: badgeColor,
+                                    ),
+                                  ),
+                                );
+                              },
+                            ),
                           ),
                         ),
-                        const SizedBox(height: 36),
+                        const SizedBox(height: 24),
+
+                        // Pill Badge
+                        Container(
+                          padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 5),
+                          decoration: BoxDecoration(
+                            color: badgeColor.withValues(alpha: 0.12),
+                            borderRadius: BorderRadius.circular(20),
+                            border: Border.all(color: badgeColor.withValues(alpha: 0.3)),
+                          ),
+                          child: Row(
+                            mainAxisSize: MainAxisSize.min,
+                            children: [
+                              Icon(page['badgeIcon'] as IconData, color: badgeColor, size: 14),
+                              const SizedBox(width: 6),
+                              Text(
+                                page['badge'] as String,
+                                style: TextStyle(
+                                  color: badgeColor,
+                                  fontWeight: FontWeight.w800,
+                                  fontSize: 11,
+                                  letterSpacing: 0.4,
+                                ),
+                              ),
+                            ],
+                          ),
+                        ),
+                        const SizedBox(height: 14),
+
+                        // Title
                         Text(
                           page['title'] as String,
                           textAlign: TextAlign.center,
                           style: const TextStyle(
-                            fontSize: 24,
-                            fontWeight: FontWeight.w700,
+                            fontSize: 23,
+                            fontWeight: FontWeight.w800,
                             color: AppColors.primary,
                             letterSpacing: -0.3,
+                            height: 1.25,
                           ),
                         ),
-                        const SizedBox(height: 16),
+                        const SizedBox(height: 10),
+
+                        // Subtitle
                         Text(
                           page['subtitle'] as String,
                           textAlign: TextAlign.center,
                           style: const TextStyle(
-                            fontSize: 15,
+                            fontSize: 14,
                             color: AppColors.textSecondary,
                             height: 1.5,
                           ),
@@ -130,38 +202,63 @@ class _OnboardingScreenState extends State<OnboardingScreen> {
                 },
               ),
             ),
-            // Bottom Controls (Dots & Action Button)
-            Padding(
-              padding: const EdgeInsets.all(28),
+
+            // Bottom Navigation Strip (Indicators & CTA Button)
+            Container(
+              padding: const EdgeInsets.symmetric(horizontal: 24, vertical: 20),
+              decoration: const BoxDecoration(
+                color: Colors.white,
+                border: Border(top: BorderSide(color: AppColors.borderLight, width: 0.8)),
+              ),
               child: Row(
                 mainAxisAlignment: MainAxisAlignment.spaceBetween,
                 children: [
-                  // Dot Indicators
+                  // Smooth Indicator Dots
                   Row(
                     children: List.generate(_pages.length, (idx) {
+                      final isSelected = _currentIndex == idx;
                       return AnimatedContainer(
-                        duration: const Duration(milliseconds: 250),
+                        duration: const Duration(milliseconds: 300),
                         margin: const EdgeInsets.only(right: 6),
-                        width: _currentIndex == idx ? 24 : 8,
+                        width: isSelected ? 28 : 8,
                         height: 8,
                         decoration: BoxDecoration(
-                          color: _currentIndex == idx ? AppColors.secondary : AppColors.borderLight,
+                          color: isSelected ? AppColors.secondary : const Color(0xFFCBD5E1),
                           borderRadius: BorderRadius.circular(4),
                         ),
                       );
                     }),
                   ),
-                  // Next / Get Started Button
+
+                  // Next / Get Started Action Button
                   ElevatedButton(
                     onPressed: _onNext,
                     style: ElevatedButton.styleFrom(
                       backgroundColor: AppColors.primary,
-                      padding: const EdgeInsets.symmetric(horizontal: 26, vertical: 14),
-                      shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
+                      padding: const EdgeInsets.symmetric(horizontal: 24, vertical: 14),
+                      shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(14)),
+                      elevation: 2,
                     ),
-                    child: Text(
-                      _currentIndex == _pages.length - 1 ? 'Get Started' : 'Next',
-                      style: const TextStyle(fontWeight: FontWeight.w600, fontSize: 15),
+                    child: Row(
+                      mainAxisSize: MainAxisSize.min,
+                      children: [
+                        Text(
+                          _currentIndex == _pages.length - 1 ? 'Get Started' : 'Next',
+                          style: const TextStyle(
+                            color: Colors.white,
+                            fontWeight: FontWeight.w700,
+                            fontSize: 15,
+                          ),
+                        ),
+                        const SizedBox(width: 8),
+                        Icon(
+                          _currentIndex == _pages.length - 1
+                              ? Icons.arrow_forward_rounded
+                              : Icons.navigate_next_rounded,
+                          color: AppColors.secondary,
+                          size: 18,
+                        ),
+                      ],
                     ),
                   ),
                 ],
