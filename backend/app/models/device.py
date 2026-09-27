@@ -36,6 +36,14 @@ class Device(db.Model):
         return self.device_secret_hash == hashlib.sha256(secret.encode('utf-8')).hexdigest()
 
     def to_dict(self) -> dict:
+        # Physical device is only considered ONLINE if a heartbeat was received within the last 90 seconds
+        is_live = False
+        if self.last_heartbeat:
+            delta_s = (datetime.utcnow() - self.last_heartbeat).total_seconds()
+            if delta_s < 90:
+                is_live = True
+
+        calculated_status = 'ONLINE' if is_live else 'OFFLINE'
         return {
             'id': self.id,
             'device_id': self.device_id,
@@ -43,13 +51,14 @@ class Device(db.Model):
             'assigned_user_id': self.assigned_user_id,
             'nickname': self.nickname,
             'is_paired': self.is_paired,
-            'status': self.status,
+            'status': calculated_status,
+            'is_online': is_live,
             'last_heartbeat': self.last_heartbeat.isoformat() if self.last_heartbeat else None,
             'firmware_version': self.firmware_version,
-            'battery_percent': self.battery_percent,
-            'battery_voltage': self.battery_voltage,
-            'wifi_rssi': self.wifi_rssi,
-            'camera_health': self.camera_health,
+            'battery_percent': self.battery_percent if is_live else 0,
+            'battery_voltage': self.battery_voltage if is_live else 0.0,
+            'wifi_rssi': self.wifi_rssi if is_live else 0,
+            'camera_health': self.camera_health if is_live else 'DISCONNECTED',
             'created_at': self.created_at.isoformat() if self.created_at else None,
         }
 

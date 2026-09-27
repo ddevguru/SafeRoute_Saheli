@@ -12,11 +12,11 @@ class StatusOverviewCard extends StatelessWidget {
 
   const StatusOverviewCard({
     Key? key,
-    this.isDeviceConnected = true,
-    this.batteryPercent = 85,
+    this.isDeviceConnected = false,
+    this.batteryPercent = 0,
     this.safetyScore = 82.0,
     this.guardianStatus = 'Mother ● Online',
-    this.isCameraLive = true,
+    this.isCameraLive = false,
     this.currentLocationName = 'Central Safe Zone',
     this.onTap,
   }) : super(key: key);
@@ -58,19 +58,21 @@ class StatusOverviewCard extends StatelessWidget {
                     const SizedBox(width: 8),
                     Text(
                       isDeviceConnected ? 'Device Connected' : 'Device Offline',
-                      style: const TextStyle(
+                      style: TextStyle(
                         fontWeight: FontWeight.w700,
                         fontSize: 13,
-                        color: AppColors.textPrimary,
+                        color: isDeviceConnected ? AppColors.textPrimary : AppColors.emergency,
                       ),
                     ),
                     const SizedBox(width: 6),
                     Text(
-                      '(ESP32 & CAM)',
+                      isDeviceConnected ? '(ESP32 Active)' : '(Tap to Connect Wi-Fi)',
                       style: TextStyle(
                         fontSize: 11,
-                        color: AppColors.textSecondary.withValues(alpha: 0.8),
-                        fontWeight: FontWeight.w500,
+                        color: isDeviceConnected
+                            ? AppColors.textSecondary.withValues(alpha: 0.8)
+                            : AppColors.primary,
+                        fontWeight: FontWeight.w600,
                       ),
                     ),
                   ],
@@ -79,17 +81,23 @@ class StatusOverviewCard extends StatelessWidget {
                 Row(
                   children: [
                     Icon(
-                      batteryPercent > 20 ? Icons.battery_charging_full : Icons.battery_alert,
-                      color: batteryPercent > 20 ? AppColors.success : AppColors.emergency,
+                      isDeviceConnected
+                          ? (batteryPercent > 20 ? Icons.battery_charging_full : Icons.battery_alert)
+                          : Icons.power_off_rounded,
+                      color: isDeviceConnected
+                          ? (batteryPercent > 20 ? AppColors.success : AppColors.emergency)
+                          : AppColors.textMuted,
                       size: 18,
                     ),
                     const SizedBox(width: 4),
                     Text(
-                      '$batteryPercent%',
+                      isDeviceConnected ? '$batteryPercent%' : 'OFF',
                       style: TextStyle(
                         fontWeight: FontWeight.w700,
                         fontSize: 13,
-                        color: batteryPercent > 20 ? AppColors.textPrimary : AppColors.emergency,
+                        color: isDeviceConnected
+                            ? (batteryPercent > 20 ? AppColors.textPrimary : AppColors.emergency)
+                            : AppColors.textMuted,
                       ),
                     ),
                     const SizedBox(width: 8),

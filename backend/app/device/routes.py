@@ -82,13 +82,13 @@ def pair_device():
 
 
 @device_bp.route('/my', methods=['GET'])
-@jwt_required()
+@jwt_required(optional=True)
 def get_my_devices():
     """Saheli fetches all devices paired to her account"""
-    user_id = g.user_id
-    devices = Device.query.filter_by(assigned_user_id=user_id).all()
+    user_id = getattr(g, 'user_id', None)
+    devices = Device.query.filter_by(assigned_user_id=user_id).all() if user_id else []
     if not devices:
-        # Default active provisioned device pair for out-of-the-box experience
+        # Default registered IoT device pair in true OFFLINE state until physical device powers on & pings
         return jsonify({
             'success': True,
             'devices': [
@@ -97,22 +97,23 @@ def get_my_devices():
                     'device_id': 'SAHELI-WEARABLE-001',
                     'device_type': 'ESP32_WEARABLE',
                     'nickname': 'Saheli Smart Safety Band',
-                    'status': 'ONLINE',
-                    'battery_percent': 85,
-                    'battery_voltage': 4.12,
-                    'wifi_rssi': -58,
-                    'firmware_version': '2.4.1',
+                    'status': 'OFFLINE',
+                    'is_online': False,
+                    'battery_percent': 0,
+                    'battery_voltage': 0.0,
+                    'wifi_rssi': 0,
+                    'firmware_version': '1.0.0-ARDUINO',
                     'is_paired': True,
-                    'last_heartbeat': datetime.utcnow().isoformat(),
+                    'last_heartbeat': None,
                     'latitude': 28.6139,
                     'longitude': 77.2090,
-                    'heart_rate_bpm': 74,
-                    'spo2': 98,
+                    'heart_rate_bpm': 0,
+                    'spo2': 0,
                     'sensors': {
-                        'mpu6050_fall': True,
-                        'capacitive_touch': True,
-                        'inmp441_audio': True,
-                        'neo6m_gps': True
+                        'mpu6050_fall': False,
+                        'capacitive_touch': False,
+                        'inmp441_audio': False,
+                        'neo6m_gps': False
                     }
                 },
                 {
@@ -120,18 +121,19 @@ def get_my_devices():
                     'device_id': 'SAHELI-CAM-001',
                     'device_type': 'ESP32_CAM',
                     'nickname': 'Saheli AI Vision Cam',
-                    'status': 'ONLINE',
-                    'battery_percent': 92,
-                    'wifi_rssi': -62,
+                    'status': 'OFFLINE',
+                    'is_online': False,
+                    'battery_percent': 0,
+                    'wifi_rssi': 0,
                     'stream_url': 'http://192.168.4.1:81/stream',
-                    'firmware_version': '1.8.0',
-                    'camera_health': 'HEALTHY_15FPS',
+                    'firmware_version': '1.0.0-CAM-ARDUINO',
+                    'camera_health': 'DISCONNECTED',
                     'is_paired': True,
-                    'last_heartbeat': datetime.utcnow().isoformat(),
+                    'last_heartbeat': None,
                     'features': {
-                        'ov2640_mjpeg': True,
-                        'flash_led_strobe': True,
-                        'burst_evidence': True
+                        'ov2640_mjpeg': False,
+                        'flash_led_strobe': False,
+                        'burst_evidence': False
                     }
                 }
             ]

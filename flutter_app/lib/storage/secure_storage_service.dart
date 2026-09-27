@@ -92,6 +92,23 @@ class SecureStorageService {
     await _deleteSafe(_keyActiveIncidentId);
   }
 
+  // IoT Device IPs
+  static const String _keyWearableIp = 'saheli_wearable_ip';
+  static const String _keyCameraIp = 'saheli_camera_ip';
+
+  static Future<void> saveDeviceIps({required String wearableIp, required String cameraIp}) async {
+    await _writeSafe(_keyWearableIp, wearableIp);
+    await _writeSafe(_keyCameraIp, cameraIp);
+  }
+
+  static Future<String?> getWearableIp() async {
+    return await _readSafe(_keyWearableIp);
+  }
+
+  static Future<String?> getCameraIp() async {
+    return await _readSafe(_keyCameraIp);
+  }
+
   // Clear Session
   static Future<void> clearAll() async {
     _memoryCache.clear();

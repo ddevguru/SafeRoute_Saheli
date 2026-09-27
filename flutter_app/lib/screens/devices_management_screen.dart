@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 import '../constants/app_colors.dart';
 import '../models/device_model.dart';
 import '../repositories/device_repository.dart';
+import '../services/local_device_service.dart';
 import '../routes/app_routes.dart';
 
 class DevicesManagementScreen extends StatefulWidget {
@@ -13,14 +14,40 @@ class DevicesManagementScreen extends StatefulWidget {
 
 class _DevicesManagementScreenState extends State<DevicesManagementScreen> {
   final DeviceRepository _deviceRepository = DeviceRepository();
+  final LocalDeviceService _localDeviceService = LocalDeviceService();
+
+  late TextEditingController _wearableIpController;
+  late TextEditingController _cameraIpController;
+
   bool _isLoading = true;
+  bool _isPinging = false;
   bool _isTorchOn = false;
   List<DeviceModel> _devices = [];
 
   @override
   void initState() {
     super.initState();
+    _wearableIpController = TextEditingController(text: _localDeviceService.connectionState.value.wearableIp);
+    _cameraIpController = TextEditingController(text: _localDeviceService.connectionState.value.cameraIp);
+    _initLocalService();
     _fetchDevices();
+  }
+
+  Future<void> _initLocalService() async {
+    await _localDeviceService.init();
+    if (mounted) {
+      setState(() {
+        _wearableIpController.text = _localDeviceService.connectionState.value.wearableIp;
+        _cameraIpController.text = _localDeviceService.connectionState.value.cameraIp;
+      });
+    }
+  }
+
+  @override
+  void dispose() {
+    _wearableIpController.dispose();
+    _cameraIpController.dispose();
+    super.dispose();
   }
 
   Future<void> _fetchDevices() async {
@@ -30,6 +57,37 @@ class _DevicesManagementScreenState extends State<DevicesManagementScreen> {
       _devices = list;
       _isLoading = false;
     });
+  }
+
+  Future<void> _pingAndConnectLocalWifi() async {
+    setState(() => _isPinging = true);
+    final wIp = _wearableIpController.text.trim();
+    final cIp = _cameraIpController.text.trim();
+
+    await _localDeviceService.saveIps(wearableIp: wIp, cameraIp: cIp);
+    await _localDeviceService.pingAllDevices();
+    await _fetchDevices();
+
+    if (!mounted) return;
+    setState(() => _isPinging = false);
+
+    final local = _localDeviceService.connectionState.value;
+    if (local.isWearableOnline) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(
+          content: Text('✅ ESP32 Wearable Connected on Wi-Fi ($wIp)! Battery: ${local.wearableBattery}%'),
+          backgroundColor: AppColors.success,
+        ),
+      );
+    } else {
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(
+          content: Text('❌ Device not responding. Ensure ESP32 is powered ON and on the same Wi-Fi network.'),
+          backgroundColor: AppColors.emergency,
+          duration: Duration(seconds: 4),
+        ),
+      );
+    }
   }
 
   Future<void> _testAlarm(String deviceId) async {
@@ -190,176 +248,356 @@ class _DevicesManagementScreenState extends State<DevicesManagementScreen> {
 
   @override
   Widget build(BuildContext context) {
-    final wearable = _devices.firstWhere(
-      (d) => d.isWearable,
-      orElse: () => DeviceModel(
-        id: 'dev-wearable-001',
-        deviceId: 'SAHELI-WEARABLE-001',
-        deviceType: 'ESP32_WEARABLE',
-        nickname: 'Saheli Smart Safety Band',
-        status: 'ONLINE',
-        batteryPercent: 85,
-        batteryVoltage: 4.12,
-        wifiRssi: -58,
-        latitude: 28.6139,
-        longitude: 77.2090,
-        heartRateBpm: 74,
-        spo2: 98,
-      ),
-    );
+    return ValueListenableBuilder<LocalDeviceState>(
+      valueListenable: _localDeviceService.connectionState,
+      builder: (context, localState, _) {
+        final isWearableLive = localState.isWearableOnline || _devices.any((d) => d.isWearable && d.isOnline);
+        final isCamLive = localState.isCameraOnline || _devices.any((d) => d.isCamera && d.isOnline);
+        final onlineCount = (isWearableLive ? 1 : 0) + (isCamLive ? 1 : 0);
 
-    final camera = _devices.firstWhere(
-      (d) => d.isCamera,
-      orElse: () => DeviceModel(
-        id: 'dev-cam-001',
-        deviceId: 'SAHELI-CAM-001',
-        deviceType: 'ESP32_CAM',
-        nickname: 'Saheli AI Vision Cam',
-        status: 'ONLINE',
-        batteryPercent: 92,
-        wifiRssi: -62,
-        streamUrl: 'http://192.168.4.1:81/stream',
-        cameraHealth: 'HEALTHY_15FPS',
-      ),
-    );
-
-    return Scaffold(
-      backgroundColor: AppColors.background,
-      appBar: AppBar(
-        title: const Text('Connect & Manage IoT Devices'),
-        actions: [
-          IconButton(
-            icon: const Icon(Icons.refresh_rounded),
-            tooltip: 'Rescan Devices',
-            onPressed: _fetchDevices,
+        final wearable = _devices.firstWhere(
+          (d) => d.isWearable,
+          orElse: () => DeviceModel(
+            id: 'dev-wearable-001',
+            deviceId: 'SAHELI-WEARABLE-001',
+            deviceType: 'ESP32_WEARABLE',
+            nickname: 'Saheli Smart Safety Band',
+            status: isWearableLive ? 'ONLINE' : 'OFFLINE',
+            batteryPercent: isWearableLive ? localState.wearableBattery : 0,
+            batteryVoltage: isWearableLive ? localState.wearableVoltage : 0.0,
+            wifiRssi: isWearableLive ? localState.wearableRssi : 0,
+            latitude: 28.6139,
+            longitude: 77.2090,
+            heartRateBpm: isWearableLive ? 74 : 0,
+            spo2: isWearableLive ? 98 : 0,
           ),
-          IconButton(
-            icon: const Icon(Icons.add_link_rounded),
-            tooltip: 'Pair New Device',
-            onPressed: () => _showPairingDialog(),
+        );
+
+        final camera = _devices.firstWhere(
+          (d) => d.isCamera,
+          orElse: () => DeviceModel(
+            id: 'dev-cam-001',
+            deviceId: 'SAHELI-CAM-001',
+            deviceType: 'ESP32_CAM',
+            nickname: 'Saheli AI Vision Cam',
+            status: isCamLive ? 'ONLINE' : 'OFFLINE',
+            batteryPercent: isCamLive ? 92 : 0,
+            wifiRssi: isCamLive ? -62 : 0,
+            streamUrl: 'http://${localState.cameraIp}/stream',
+            cameraHealth: isCamLive ? 'HEALTHY_20FPS' : 'DISCONNECTED',
+          ),
+        );
+
+        return Scaffold(
+          backgroundColor: AppColors.background,
+          appBar: AppBar(
+            title: const Text('Connect & Manage IoT Devices'),
+            actions: [
+              IconButton(
+                icon: const Icon(Icons.refresh_rounded),
+                tooltip: 'Rescan Devices',
+                onPressed: _fetchDevices,
+              ),
+              IconButton(
+                icon: const Icon(Icons.add_link_rounded),
+                tooltip: 'Pair New Device',
+                onPressed: () => _showPairingDialog(),
+              ),
+            ],
+          ),
+          body: _isLoading
+              ? const Center(child: CircularProgressIndicator(color: AppColors.primary))
+              : SafeArea(
+                  child: SingleChildScrollView(
+                    padding: const EdgeInsets.symmetric(horizontal: 18, vertical: 16),
+                    child: Column(
+                      crossAxisAlignment: CrossAxisAlignment.start,
+                      children: [
+                        // Dual-Device Ecosystem Status Banner
+                        Container(
+                          padding: const EdgeInsets.all(16),
+                          decoration: BoxDecoration(
+                            gradient: const LinearGradient(
+                              colors: [Color(0xFF1E293B), Color(0xFF0F172A)],
+                              begin: Alignment.topLeft,
+                              end: Alignment.bottomRight,
+                            ),
+                            borderRadius: BorderRadius.circular(18),
+                            boxShadow: [
+                              BoxShadow(
+                                color: Colors.black.withValues(alpha: 0.1),
+                                blurRadius: 12,
+                                offset: const Offset(0, 4),
+                              ),
+                            ],
+                          ),
+                          child: Row(
+                            children: [
+                              Container(
+                                padding: const EdgeInsets.all(12),
+                                decoration: BoxDecoration(
+                                  color: AppColors.primary.withValues(alpha: 0.3),
+                                  shape: BoxShape.circle,
+                                ),
+                                child: const Icon(Icons.hub_rounded, color: AppColors.secondary, size: 28),
+                              ),
+                              const SizedBox(width: 14),
+                              Expanded(
+                                child: Column(
+                                  crossAxisAlignment: CrossAxisAlignment.start,
+                                  children: [
+                                    const Text(
+                                      'Dual-Device Mesh Network',
+                                      style: TextStyle(
+                                        color: Colors.white,
+                                        fontSize: 16,
+                                        fontWeight: FontWeight.w700,
+                                      ),
+                                    ),
+                                    const SizedBox(height: 4),
+                                    Text(
+                                      onlineCount == 2
+                                          ? 'Wearable Smart Band & AI Vision Cam connected and synchronised.'
+                                          : onlineCount == 1
+                                              ? '1 device active. Check Wi-Fi connection for second device.'
+                                              : 'Devices are currently OFF / Disconnected. Turn on boards to start telemetry.',
+                                      style: const TextStyle(color: Colors.white70, fontSize: 12),
+                                    ),
+                                  ],
+                                ),
+                              ),
+                              Container(
+                                padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 5),
+                                decoration: BoxDecoration(
+                                  color: (onlineCount > 0 ? AppColors.success : AppColors.deviceOffline).withValues(alpha: 0.2),
+                                  borderRadius: BorderRadius.circular(20),
+                                  border: Border.all(
+                                    color: (onlineCount > 0 ? AppColors.success : AppColors.deviceOffline).withValues(alpha: 0.5),
+                                  ),
+                                ),
+                                child: Text(
+                                  '$onlineCount/2 ONLINE',
+                                  style: TextStyle(
+                                    color: onlineCount > 0 ? AppColors.success : Colors.white70,
+                                    fontSize: 11,
+                                    fontWeight: FontWeight.bold,
+                                  ),
+                                ),
+                              ),
+                            ],
+                          ),
+                        ),
+                        const SizedBox(height: 18),
+
+                        // SAME WI-FI CONNECTION SETUP CARD
+                        _buildWifiConnectCard(localState),
+                        const SizedBox(height: 22),
+
+                        // SECTION 1: WEARABLE SMART BAND
+                        _buildDeviceHeader(
+                          title: 'Device 1: Saheli Smart Safety Band',
+                          type: 'ESP32 Wearable Hardware',
+                          icon: Icons.watch_rounded,
+                          accentColor: AppColors.primary,
+                        ),
+                        const SizedBox(height: 10),
+                        _buildWearableCard(wearable, isWearableLive),
+
+                        const SizedBox(height: 24),
+
+                        // SECTION 2: AI VISION CAMERA
+                        _buildDeviceHeader(
+                          title: 'Device 2: Saheli AI Vision Companion',
+                          type: 'ESP32-CAM Vision Module',
+                          icon: Icons.videocam_rounded,
+                          accentColor: AppColors.emergency,
+                        ),
+                        const SizedBox(height: 10),
+                        _buildCameraCard(camera, isCamLive),
+
+                        const SizedBox(height: 24),
+
+                        // PAIR / REPAIR ACTION BUTTON
+                        SizedBox(
+                          width: double.infinity,
+                          height: 52,
+                          child: OutlinedButton.icon(
+                            style: OutlinedButton.styleFrom(
+                              side: const BorderSide(color: AppColors.primary, width: 1.5),
+                              shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(14)),
+                            ),
+                            icon: const Icon(Icons.add_circle_outline_rounded, color: AppColors.primary),
+                            label: const Text(
+                              'Pair New / Additional IoT Device',
+                              style: TextStyle(color: AppColors.primary, fontWeight: FontWeight.w700, fontSize: 15),
+                            ),
+                            onPressed: () => _showPairingDialog(),
+                          ),
+                        ),
+                        const SizedBox(height: 20),
+                      ],
+                    ),
+                  ),
+                ),
+        );
+      },
+    );
+  }
+
+  Widget _buildWifiConnectCard(LocalDeviceState localState) {
+    return Container(
+      padding: const EdgeInsets.all(16),
+      decoration: BoxDecoration(
+        color: Colors.white,
+        borderRadius: BorderRadius.circular(18),
+        border: Border.all(color: AppColors.primary.withValues(alpha: 0.3)),
+        boxShadow: [
+          BoxShadow(
+            color: AppColors.primary.withValues(alpha: 0.05),
+            blurRadius: 14,
+            offset: const Offset(0, 4),
           ),
         ],
       ),
-      body: _isLoading
-          ? const Center(child: CircularProgressIndicator(color: AppColors.primary))
-          : SafeArea(
-              child: SingleChildScrollView(
-                padding: const EdgeInsets.symmetric(horizontal: 18, vertical: 16),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Row(
+            children: [
+              Container(
+                padding: const EdgeInsets.all(8),
+                decoration: BoxDecoration(
+                  color: AppColors.primary.withValues(alpha: 0.1),
+                  borderRadius: BorderRadius.circular(10),
+                ),
+                child: const Icon(Icons.wifi_rounded, color: AppColors.primary, size: 20),
+              ),
+              const SizedBox(width: 10),
+              const Expanded(
                 child: Column(
                   crossAxisAlignment: CrossAxisAlignment.start,
                   children: [
-                    // Dual-Device Ecosystem Status Banner
-                    Container(
-                      padding: const EdgeInsets.all(16),
-                      decoration: BoxDecoration(
-                        gradient: const LinearGradient(
-                          colors: [Color(0xFF1E293B), Color(0xFF0F172A)],
-                          begin: Alignment.topLeft,
-                          end: Alignment.bottomRight,
-                        ),
-                        borderRadius: BorderRadius.circular(18),
-                        boxShadow: [
-                          BoxShadow(
-                            color: Colors.black.withValues(alpha: 0.1),
-                            blurRadius: 12,
-                            offset: const Offset(0, 4),
-                          ),
-                        ],
-                      ),
-                      child: Row(
-                        children: [
-                          Container(
-                            padding: const EdgeInsets.all(12),
-                            decoration: BoxDecoration(
-                              color: AppColors.primary.withValues(alpha: 0.3),
-                              shape: BoxShape.circle,
-                            ),
-                            child: const Icon(Icons.hub_rounded, color: AppColors.secondary, size: 28),
-                          ),
-                          const SizedBox(width: 14),
-                          const Expanded(
-                            child: Column(
-                              crossAxisAlignment: CrossAxisAlignment.start,
-                              children: [
-                                Text(
-                                  'Dual-Device Mesh Active',
-                                  style: TextStyle(
-                                    color: Colors.white,
-                                    fontSize: 16,
-                                    fontWeight: FontWeight.w700,
-                                  ),
-                                ),
-                                SizedBox(height: 4),
-                                Text(
-                                  'Wearable Smart Band & AI Vision Cam synchronised with Cloud Watchdog.',
-                                  style: TextStyle(color: Colors.white70, fontSize: 12),
-                                ),
-                              ],
-                            ),
-                          ),
-                          Container(
-                            padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 5),
-                            decoration: BoxDecoration(
-                              color: AppColors.success.withValues(alpha: 0.2),
-                              borderRadius: BorderRadius.circular(20),
-                              border: Border.all(color: AppColors.success.withValues(alpha: 0.5)),
-                            ),
-                            child: const Text(
-                              '2/2 ONLINE',
-                              style: TextStyle(color: AppColors.success, fontSize: 11, fontWeight: FontWeight.bold),
-                            ),
-                          ),
-                        ],
-                      ),
+                    Text(
+                      'Connect on Same Local Wi-Fi',
+                      style: TextStyle(fontWeight: FontWeight.w700, fontSize: 14),
                     ),
-                    const SizedBox(height: 22),
-
-                    // SECTION 1: WEARABLE SMART BAND
-                    _buildDeviceHeader(
-                      title: 'Device 1: Saheli Smart Safety Band',
-                      type: 'ESP32 Wearable Hardware',
-                      icon: Icons.watch_rounded,
-                      accentColor: AppColors.primary,
+                    Text(
+                      'Phone and ESP32 must be on the same Wi-Fi / Hotspot',
+                      style: TextStyle(fontSize: 11, color: AppColors.textSecondary),
                     ),
-                    const SizedBox(height: 10),
-                    _buildWearableCard(wearable),
-
-                    const SizedBox(height: 24),
-
-                    // SECTION 2: AI VISION CAMERA
-                    _buildDeviceHeader(
-                      title: 'Device 2: Saheli AI Vision Companion',
-                      type: 'ESP32-CAM Vision Module',
-                      icon: Icons.videocam_rounded,
-                      accentColor: AppColors.emergency,
-                    ),
-                    const SizedBox(height: 10),
-                    _buildCameraCard(camera),
-
-                    const SizedBox(height: 24),
-
-                    // PAIR / REPAIR ACTION BUTTON
-                    SizedBox(
-                      width: double.infinity,
-                      height: 52,
-                      child: OutlinedButton.icon(
-                        style: OutlinedButton.styleFrom(
-                          side: const BorderSide(color: AppColors.primary, width: 1.5),
-                          shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(14)),
-                        ),
-                        icon: const Icon(Icons.add_circle_outline_rounded, color: AppColors.primary),
-                        label: const Text(
-                          'Pair New / Additional IoT Device',
-                          style: TextStyle(color: AppColors.primary, fontWeight: FontWeight.w700, fontSize: 15),
-                        ),
-                        onPressed: () => _showPairingDialog(),
-                      ),
-                    ),
-                    const SizedBox(height: 20),
                   ],
                 ),
               ),
+            ],
+          ),
+          const SizedBox(height: 14),
+
+          // Wearable IP Input Field
+          const Text('ESP32 Wearable IP Address', style: TextStyle(fontWeight: FontWeight.w600, fontSize: 12)),
+          const SizedBox(height: 6),
+          Row(
+            children: [
+              Expanded(
+                child: TextField(
+                  controller: _wearableIpController,
+                  decoration: InputDecoration(
+                    hintText: 'e.g. 192.168.1.150 or 192.168.4.1',
+                    contentPadding: const EdgeInsets.symmetric(horizontal: 12, vertical: 10),
+                    border: OutlineInputBorder(borderRadius: BorderRadius.circular(10)),
+                    prefixIcon: const Icon(Icons.watch_rounded, size: 18),
+                  ),
+                ),
+              ),
+              const SizedBox(width: 8),
+              OutlinedButton(
+                style: OutlinedButton.styleFrom(
+                  padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 12),
+                  shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(10)),
+                ),
+                onPressed: () {
+                  setState(() => _wearableIpController.text = '192.168.4.1');
+                },
+                child: const Text('Hotspot IP', style: TextStyle(fontSize: 11)),
+              ),
+            ],
+          ),
+          const SizedBox(height: 10),
+
+          // ESP32-CAM IP Input Field
+          const Text('ESP32-CAM IP & Port', style: TextStyle(fontWeight: FontWeight.w600, fontSize: 12)),
+          const SizedBox(height: 6),
+          Row(
+            children: [
+              Expanded(
+                child: TextField(
+                  controller: _cameraIpController,
+                  decoration: InputDecoration(
+                    hintText: 'e.g. 192.168.1.151:81 or 192.168.4.1:81',
+                    contentPadding: const EdgeInsets.symmetric(horizontal: 12, vertical: 10),
+                    border: OutlineInputBorder(borderRadius: BorderRadius.circular(10)),
+                    prefixIcon: const Icon(Icons.videocam_rounded, size: 18),
+                  ),
+                ),
+              ),
+              const SizedBox(width: 8),
+              OutlinedButton(
+                style: OutlinedButton.styleFrom(
+                  padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 12),
+                  shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(10)),
+                ),
+                onPressed: () {
+                  setState(() => _cameraIpController.text = '192.168.4.1:81');
+                },
+                child: const Text('Hotspot CAM', style: TextStyle(fontSize: 11)),
+              ),
+            ],
+          ),
+          const SizedBox(height: 14),
+
+          // Ping & Verify Button
+          SizedBox(
+            width: double.infinity,
+            height: 44,
+            child: ElevatedButton.icon(
+              style: ElevatedButton.styleFrom(
+                backgroundColor: AppColors.primary,
+                shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(10)),
+              ),
+              icon: _isPinging
+                  ? const SizedBox(width: 16, height: 16, child: CircularProgressIndicator(color: Colors.white, strokeWidth: 2))
+                  : const Icon(Icons.sync_rounded, size: 18),
+              label: Text(
+                _isPinging ? 'Pinging Devices on Wi-Fi...' : 'Ping & Connect via Wi-Fi',
+                style: const TextStyle(fontWeight: FontWeight.bold),
+              ),
+              onPressed: _isPinging ? null : _pingAndConnectLocalWifi,
             ),
+          ),
+          if (localState.errorMessage != null && !localState.isWearableOnline) ...[
+            const SizedBox(height: 10),
+            Container(
+              padding: const EdgeInsets.all(10),
+              decoration: BoxDecoration(
+                color: AppColors.emergency.withValues(alpha: 0.08),
+                borderRadius: BorderRadius.circular(8),
+                border: Border.all(color: AppColors.emergency.withValues(alpha: 0.3)),
+              ),
+              child: Row(
+                children: [
+                  const Icon(Icons.info_outline_rounded, color: AppColors.emergency, size: 16),
+                  const SizedBox(width: 8),
+                  Expanded(
+                    child: Text(
+                      localState.errorMessage!,
+                      style: const TextStyle(color: AppColors.emergency, fontSize: 11, fontWeight: FontWeight.w500),
+                    ),
+                  ),
+                ],
+              ),
+            ),
+          ],
+        ],
+      ),
     );
   }
 
@@ -397,13 +635,13 @@ class _DevicesManagementScreenState extends State<DevicesManagementScreen> {
     );
   }
 
-  Widget _buildWearableCard(DeviceModel device) {
+  Widget _buildWearableCard(DeviceModel device, bool isLive) {
     return Container(
       padding: const EdgeInsets.all(16),
       decoration: BoxDecoration(
         color: Colors.white,
         borderRadius: BorderRadius.circular(18),
-        border: Border.all(color: AppColors.borderLight),
+        border: Border.all(color: isLive ? AppColors.success.withValues(alpha: 0.4) : AppColors.borderLight),
         boxShadow: [
           BoxShadow(
             color: Colors.black.withValues(alpha: 0.03),
@@ -424,8 +662,8 @@ class _DevicesManagementScreenState extends State<DevicesManagementScreen> {
                   Container(
                     width: 10,
                     height: 10,
-                    decoration: const BoxDecoration(
-                      color: AppColors.success,
+                    decoration: BoxDecoration(
+                      color: isLive ? AppColors.success : AppColors.deviceOffline,
                       shape: BoxShape.circle,
                     ),
                   ),
@@ -439,12 +677,16 @@ class _DevicesManagementScreenState extends State<DevicesManagementScreen> {
               Container(
                 padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 3),
                 decoration: BoxDecoration(
-                  color: AppColors.success.withValues(alpha: 0.12),
+                  color: (isLive ? AppColors.success : AppColors.deviceOffline).withValues(alpha: 0.12),
                   borderRadius: BorderRadius.circular(8),
                 ),
-                child: const Text(
-                  'CONNECTED',
-                  style: TextStyle(color: AppColors.success, fontSize: 10, fontWeight: FontWeight.bold),
+                child: Text(
+                  isLive ? 'ONLINE (WI-FI)' : 'OFFLINE (POWER OFF)',
+                  style: TextStyle(
+                    color: isLive ? AppColors.success : AppColors.emergency,
+                    fontSize: 10,
+                    fontWeight: FontWeight.bold,
+                  ),
                 ),
               ),
             ],
@@ -456,31 +698,55 @@ class _DevicesManagementScreenState extends State<DevicesManagementScreen> {
           ),
           const Divider(height: 22, color: AppColors.divider),
 
+          if (!isLive) ...[
+            Container(
+              padding: const EdgeInsets.all(12),
+              decoration: BoxDecoration(
+                color: AppColors.emergency.withValues(alpha: 0.06),
+                borderRadius: BorderRadius.circular(12),
+                border: Border.all(color: AppColors.emergency.withValues(alpha: 0.2)),
+              ),
+              child: const Row(
+                children: [
+                  Icon(Icons.power_off_rounded, color: AppColors.emergency, size: 20),
+                  SizedBox(width: 10),
+                  Expanded(
+                    child: Text(
+                      'Physical ESP32 Wearable is currently powered OFF or unreachable.\nPower ON board and tap "Ping & Connect via Wi-Fi" above.',
+                      style: TextStyle(fontSize: 11, color: AppColors.emergency, fontWeight: FontWeight.w500),
+                    ),
+                  ),
+                ],
+              ),
+            ),
+            const SizedBox(height: 14),
+          ],
+
           // Telemetry Grid
           Row(
             children: [
               Expanded(
                 child: _buildTelemetryTile(
-                  icon: Icons.battery_charging_full_rounded,
-                  iconColor: AppColors.success,
+                  icon: isLive ? Icons.battery_charging_full_rounded : Icons.power_off_rounded,
+                  iconColor: isLive ? AppColors.success : AppColors.textMuted,
                   title: 'Battery',
-                  value: '${device.batteryPercent}% (4.1V)',
+                  value: isLive ? '${device.batteryPercent}% (${device.batteryVoltage?.toStringAsFixed(1) ?? '4.1'}V)' : '0% (Unpowered)',
                 ),
               ),
               Expanded(
                 child: _buildTelemetryTile(
                   icon: Icons.wifi_rounded,
-                  iconColor: AppColors.primary,
+                  iconColor: isLive ? AppColors.primary : AppColors.textMuted,
                   title: 'Signal RSSI',
-                  value: '${device.wifiRssi} dBm (Good)',
+                  value: isLive ? '${device.wifiRssi} dBm (Active)' : 'Disconnected',
                 ),
               ),
               Expanded(
                 child: _buildTelemetryTile(
                   icon: Icons.favorite_rounded,
-                  iconColor: AppColors.emergency,
+                  iconColor: isLive ? AppColors.emergency : AppColors.textMuted,
                   title: 'Heart Rate',
-                  value: '${device.heartRateBpm ?? 74} BPM',
+                  value: isLive ? '${device.heartRateBpm ?? 74} BPM' : '-- BPM',
                 ),
               ),
             ],
@@ -497,13 +763,13 @@ class _DevicesManagementScreenState extends State<DevicesManagementScreen> {
             ),
             child: Column(
               children: [
-                _buildSensorRow('GPS Location Fix (NEO-6M)', '28.6139° N, 77.2090° E (±2m)', Icons.location_on_rounded),
+                _buildSensorRow('GPS Location Fix (NEO-6M)', isLive ? '28.6139° N, 77.2090° E (±2m)' : 'No GPS Fix', Icons.location_on_rounded),
                 const SizedBox(height: 6),
-                _buildSensorRow('Capacitive Touch SOS Sensor', 'Armed (3000ms Hold)', Icons.touch_app_rounded),
+                _buildSensorRow('Capacitive Touch SOS Sensor', isLive ? 'Armed (1500ms Hold)' : 'Inactive (Device Off)', Icons.touch_app_rounded),
                 const SizedBox(height: 6),
-                _buildSensorRow('IMU Fall & Struggle Watchdog', 'Armed (MPU6050 6-Axis)', Icons.directions_run_rounded),
+                _buildSensorRow('IMU Fall & Struggle Watchdog', isLive ? 'Armed (MPU6050 6-Axis)' : 'Inactive (Device Off)', Icons.directions_run_rounded),
                 const SizedBox(height: 6),
-                _buildSensorRow('Acoustic Clap & Voice Sensor', 'Armed (INMP441 DSP)', Icons.mic_rounded),
+                _buildSensorRow('Acoustic Clap & Voice Sensor', isLive ? 'Armed (INMP441 DSP)' : 'Inactive (Device Off)', Icons.mic_rounded),
               ],
             ),
           ),
@@ -515,13 +781,26 @@ class _DevicesManagementScreenState extends State<DevicesManagementScreen> {
               Expanded(
                 child: ElevatedButton.icon(
                   style: ElevatedButton.styleFrom(
-                    backgroundColor: AppColors.primary,
+                    backgroundColor: isLive ? AppColors.primary : AppColors.cardBackground,
+                    foregroundColor: isLive ? Colors.white : AppColors.textMuted,
                     shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(10)),
                     padding: const EdgeInsets.symmetric(vertical: 12),
                   ),
                   icon: const Icon(Icons.vibration_rounded, size: 18),
-                  label: const Text('Test SOS Alarm', style: TextStyle(fontWeight: FontWeight.bold, fontSize: 13)),
-                  onPressed: () => _testAlarm(device.deviceId),
+                  label: Text(
+                    isLive ? 'Test Siren & Vibration' : 'Device Offline (Off)',
+                    style: const TextStyle(fontWeight: FontWeight.bold, fontSize: 13),
+                  ),
+                  onPressed: isLive
+                      ? () => _testAlarm(device.deviceId)
+                      : () {
+                          ScaffoldMessenger.of(context).showSnackBar(
+                            const SnackBar(
+                              content: Text('Device is powered OFF. Turn on your ESP32 and connect to the same Wi-Fi first.'),
+                              backgroundColor: AppColors.emergency,
+                            ),
+                          );
+                        },
                 ),
               ),
               const SizedBox(width: 10),
@@ -541,13 +820,13 @@ class _DevicesManagementScreenState extends State<DevicesManagementScreen> {
     );
   }
 
-  Widget _buildCameraCard(DeviceModel device) {
+  Widget _buildCameraCard(DeviceModel device, bool isLive) {
     return Container(
       padding: const EdgeInsets.all(16),
       decoration: BoxDecoration(
         color: Colors.white,
         borderRadius: BorderRadius.circular(18),
-        border: Border.all(color: AppColors.borderLight),
+        border: Border.all(color: isLive ? AppColors.liveIndicator.withValues(alpha: 0.4) : AppColors.borderLight),
         boxShadow: [
           BoxShadow(
             color: Colors.black.withValues(alpha: 0.03),
@@ -568,8 +847,8 @@ class _DevicesManagementScreenState extends State<DevicesManagementScreen> {
                   Container(
                     width: 10,
                     height: 10,
-                    decoration: const BoxDecoration(
-                      color: AppColors.success,
+                    decoration: BoxDecoration(
+                      color: isLive ? AppColors.liveIndicator : AppColors.deviceOffline,
                       shape: BoxShape.circle,
                     ),
                   ),
@@ -583,12 +862,16 @@ class _DevicesManagementScreenState extends State<DevicesManagementScreen> {
               Container(
                 padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 3),
                 decoration: BoxDecoration(
-                  color: AppColors.liveIndicator.withValues(alpha: 0.12),
+                  color: (isLive ? AppColors.liveIndicator : AppColors.deviceOffline).withValues(alpha: 0.12),
                   borderRadius: BorderRadius.circular(8),
                 ),
-                child: const Text(
-                  '● STREAM LIVE',
-                  style: TextStyle(color: AppColors.liveIndicator, fontSize: 10, fontWeight: FontWeight.bold),
+                child: Text(
+                  isLive ? '● STREAM LIVE' : 'OFFLINE (POWER OFF)',
+                  style: TextStyle(
+                    color: isLive ? AppColors.liveIndicator : AppColors.emergency,
+                    fontSize: 10,
+                    fontWeight: FontWeight.bold,
+                  ),
                 ),
               ),
             ],
@@ -615,58 +898,68 @@ class _DevicesManagementScreenState extends State<DevicesManagementScreen> {
                   child: Column(
                     mainAxisAlignment: MainAxisAlignment.center,
                     children: [
-                      Icon(Icons.videocam_rounded, size: 40, color: AppColors.secondary.withValues(alpha: 0.8)),
+                      Icon(
+                        isLive ? Icons.videocam_rounded : Icons.videocam_off_rounded,
+                        size: 40,
+                        color: isLive ? AppColors.secondary : AppColors.textMuted,
+                      ),
                       const SizedBox(height: 6),
-                      const Text(
-                        'ESP32-CAM MJPEG Video Stream Active',
-                        style: TextStyle(color: Colors.white, fontSize: 13, fontWeight: FontWeight.w600),
+                      Text(
+                        isLive ? 'ESP32-CAM MJPEG Video Stream Active' : 'Camera Powered OFF / Disconnected',
+                        style: TextStyle(
+                          color: isLive ? Colors.white : Colors.white60,
+                          fontSize: 13,
+                          fontWeight: FontWeight.w600,
+                        ),
                       ),
                       const SizedBox(height: 2),
-                      const Text(
-                        'OV2640 HD Sensor • 15 FPS • 120ms Latency',
-                        style: TextStyle(color: Colors.white60, fontSize: 11),
+                      Text(
+                        isLive ? 'OV2640 HD Sensor • 20 FPS • Port 81' : 'Power on ESP32-CAM & ping on Wi-Fi above',
+                        style: const TextStyle(color: Colors.white38, fontSize: 11),
                       ),
                     ],
                   ),
                 ),
-                Positioned(
-                  top: 10,
-                  left: 10,
-                  child: Container(
-                    padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 3),
-                    decoration: BoxDecoration(
-                      color: AppColors.emergency,
-                      borderRadius: BorderRadius.circular(6),
-                    ),
-                    child: const Row(
-                      mainAxisSize: MainAxisSize.min,
-                      children: [
-                        Icon(Icons.circle, color: Colors.white, size: 8),
-                        SizedBox(width: 4),
-                        Text('REC', style: TextStyle(color: Colors.white, fontSize: 10, fontWeight: FontWeight.bold)),
-                      ],
-                    ),
-                  ),
-                ),
-                Positioned(
-                  top: 10,
-                  right: 10,
-                  child: Container(
-                    padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 3),
-                    decoration: BoxDecoration(
-                      color: Colors.black54,
-                      borderRadius: BorderRadius.circular(6),
-                    ),
-                    child: Text(
-                      _isTorchOn ? 'FLASH ON' : 'FLASH OFF',
-                      style: TextStyle(
-                        color: _isTorchOn ? AppColors.secondary : Colors.white70,
-                        fontSize: 10,
-                        fontWeight: FontWeight.bold,
+                if (isLive) ...[
+                  Positioned(
+                    top: 10,
+                    left: 10,
+                    child: Container(
+                      padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 3),
+                      decoration: BoxDecoration(
+                        color: AppColors.emergency,
+                        borderRadius: BorderRadius.circular(6),
+                      ),
+                      child: const Row(
+                        mainAxisSize: MainAxisSize.min,
+                        children: [
+                          Icon(Icons.circle, color: Colors.white, size: 8),
+                          SizedBox(width: 4),
+                          Text('REC', style: TextStyle(color: Colors.white, fontSize: 10, fontWeight: FontWeight.bold)),
+                        ],
                       ),
                     ),
                   ),
-                ),
+                  Positioned(
+                    top: 10,
+                    right: 10,
+                    child: Container(
+                      padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 3),
+                      decoration: BoxDecoration(
+                        color: Colors.black54,
+                        borderRadius: BorderRadius.circular(6),
+                      ),
+                      child: Text(
+                        _isTorchOn ? 'FLASH ON' : 'FLASH OFF',
+                        style: TextStyle(
+                          color: _isTorchOn ? AppColors.secondary : Colors.white70,
+                          fontSize: 10,
+                          fontWeight: FontWeight.bold,
+                        ),
+                      ),
+                    ),
+                  ),
+                ],
               ],
             ),
           ),
@@ -678,25 +971,39 @@ class _DevicesManagementScreenState extends State<DevicesManagementScreen> {
               Expanded(
                 child: ElevatedButton.icon(
                   style: ElevatedButton.styleFrom(
-                    backgroundColor: AppColors.emergency,
+                    backgroundColor: isLive ? AppColors.emergency : AppColors.cardBackground,
+                    foregroundColor: isLive ? Colors.white : AppColors.textMuted,
                     shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(10)),
                     padding: const EdgeInsets.symmetric(vertical: 12),
                   ),
                   icon: const Icon(Icons.fullscreen_rounded, size: 18),
-                  label: const Text('Open Live Stream', style: TextStyle(fontWeight: FontWeight.bold, fontSize: 13)),
-                  onPressed: () => Navigator.pushNamed(context, AppRoutes.liveCamera),
+                  label: Text(
+                    isLive ? 'Open Live Stream' : 'Camera Offline',
+                    style: const TextStyle(fontWeight: FontWeight.bold, fontSize: 13),
+                  ),
+                  onPressed: isLive
+                      ? () => Navigator.pushNamed(context, AppRoutes.liveCamera)
+                      : () {
+                          ScaffoldMessenger.of(context).showSnackBar(
+                            const SnackBar(
+                              content: Text('ESP32-CAM is powered OFF. Turn on and verify Wi-Fi connection.'),
+                              backgroundColor: AppColors.emergency,
+                            ),
+                          );
+                        },
                 ),
               ),
               const SizedBox(width: 10),
               ElevatedButton.icon(
                 style: ElevatedButton.styleFrom(
-                  backgroundColor: AppColors.primary,
+                  backgroundColor: isLive ? AppColors.primary : AppColors.cardBackground,
+                  foregroundColor: isLive ? Colors.white : AppColors.textMuted,
                   shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(10)),
                   padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 12),
                 ),
                 icon: const Icon(Icons.camera_alt_rounded, size: 16),
                 label: const Text('Burst Snap', style: TextStyle(fontSize: 12, fontWeight: FontWeight.bold)),
-                onPressed: () => _triggerBurst(device.deviceId),
+                onPressed: isLive ? () => _triggerBurst(device.deviceId) : null,
               ),
               const SizedBox(width: 8),
               IconButton.filled(
@@ -706,16 +1013,18 @@ class _DevicesManagementScreenState extends State<DevicesManagementScreen> {
                 ),
                 icon: Icon(_isTorchOn ? Icons.flash_on_rounded : Icons.flash_off_rounded, size: 18),
                 tooltip: 'Flashlight Deterrent Toggle',
-                onPressed: () {
-                  setState(() => _isTorchOn = !_isTorchOn);
-                  ScaffoldMessenger.of(context).showSnackBar(
-                    SnackBar(
-                      content: Text(_isTorchOn ? 'ESP32-CAM High-Power Flash LED turned ON.' : 'Flash LED turned OFF.'),
-                      backgroundColor: AppColors.primary,
-                      duration: const Duration(seconds: 1),
-                    ),
-                  );
-                },
+                onPressed: isLive
+                    ? () {
+                        setState(() => _isTorchOn = !_isTorchOn);
+                        ScaffoldMessenger.of(context).showSnackBar(
+                          SnackBar(
+                            content: Text(_isTorchOn ? 'ESP32-CAM High-Power Flash LED turned ON.' : 'Flash LED turned OFF.'),
+                            backgroundColor: AppColors.primary,
+                            duration: const Duration(seconds: 1),
+                          ),
+                        );
+                      }
+                    : null,
               ),
             ],
           ),

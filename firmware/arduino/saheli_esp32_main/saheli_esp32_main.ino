@@ -23,9 +23,12 @@
 #include <WiFi.h>
 #include <WiFiClientSecure.h>
 #include <HTTPClient.h>
+#include <WebServer.h>
 #include <Wire.h>
 #include <driver/i2s.h>
 #include <HardwareSerial.h>
+
+WebServer localServer(80);
 
 // =====================================================================================
 // 1. USER CONFIGURATION & CLOUD CREDENTIALS
@@ -586,6 +589,50 @@ void setup() {
     if (WiFi.status() == WL_CONNECTED) {
         Serial.println("\n[WiFi] Connected! IP Address: " + WiFi.localIP().toString());
         sendCloudHeartbeat();
+
+        // Register local HTTP endpoints for Mobile App on same Wi-Fi
+        localServer.on("/status", HTTP_GET, []() {
+            float v = readBatteryVoltage();
+            int pct = calculateBatteryPercent(v);
+            String json = "{";
+            json += "\"device_id\":\"" + String(DEVICE_ID) + "\",";
+            json += "\"status\":\"ONLINE\",";
+            json += "\"device_type\":\"ESP32_WEARABLE\",";
+            json += "\"nickname\":\"Saheli Smart Safety Band\",";
+            json += "\"battery_percent\":" + String(pct) + ",";
+            json += "\"battery_voltage\":" + String(v, 2) + ",";
+            json += "\"wifi_rssi\":" + String(WiFi.RSSI()) + ",";
+            json += "\"latitude\":" + String(currentGPS.latitude, 6) + ",";
+            json += "\"longitude\":" + String(currentGPS.longitude, 6) + ",";
+            json += "\"gps_fixed\":" + String(currentGPS.hasValidFix ? "true" : "false") + ",";
+            json += "\"emergency_active\":" + String(emergencyActive ? "true" : "false") + ",";
+            json += "\"firmware_version\":\"" + String(FIRMWARE_VERSION) + "\",";
+            json += "\"uptime_s\":" + String(millis() / 1000);
+            json += "}";
+            localServer.sendHeader("Access-Control-Allow-Origin", "*");
+            localServer.send(200, "application/json", json);
+        });
+
+        localServer.on("/ping", HTTP_GET, []() {
+            localServer.sendHeader("Access-Control-Allow-Origin", "*");
+            localServer.send(200, "application/json", "{\"pong\":true,\"device_id\":\"" + String(DEVICE_ID) + "\"}");
+        });
+
+        localServer.on("/test-alarm", HTTP_ANY, []() {
+            // Pulse buzzer and vibration motor for 1.5 seconds to confirm local connection
+            digitalWrite(PIN_BUZZER, HIGH);
+            digitalWrite(PIN_VIBRATION, HIGH);
+            digitalWrite(PIN_STATUS_LED, HIGH);
+            delay(1500);
+            digitalWrite(PIN_BUZZER, LOW);
+            digitalWrite(PIN_VIBRATION, LOW);
+            digitalWrite(PIN_STATUS_LED, LOW);
+            localServer.sendHeader("Access-Control-Allow-Origin", "*");
+            localServer.send(200, "application/json", "{\"success\":true,\"message\":\"Hardware siren and haptic motor activated on local Wi-Fi!\"}");
+        });
+
+        localServer.begin();
+        Serial.println("[WebServer] Local HTTP server listening at http://" + WiFi.localIP().toString() + ":80");
     } else {
         Serial.println("\n[WiFi] Warning: Could not connect to WiFi. Continuing in offline mode.");
     }
@@ -622,6 +669,9 @@ void setup() {
 }
 
 void loop() {
+    // Service local Wi-Fi HTTP requests from mobile app on same network
+    localServer.handleClient();
+
     // Process Serial Testing Commands
     if (Serial.available()) {
         char cmd = (char)Serial.read();
@@ -650,5 +700,5 @@ void loop() {
     }
 
     // FreeRTOS tasks handle all sensing, audio, and networking.
-    delay(100);
+    delay(20);
 }

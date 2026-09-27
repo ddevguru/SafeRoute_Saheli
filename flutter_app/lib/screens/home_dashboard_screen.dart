@@ -3,6 +3,7 @@ import 'package:flutter_bloc/flutter_bloc.dart';
 import '../blocs/auth_bloc.dart';
 import '../blocs/emergency_bloc.dart';
 import '../constants/app_colors.dart';
+import '../services/local_device_service.dart';
 import '../widgets/emergency_button.dart';
 import '../widgets/status_card.dart';
 import '../widgets/quick_action_tile.dart';
@@ -19,6 +20,7 @@ class _HomeDashboardScreenState extends State<HomeDashboardScreen> {
   @override
   void initState() {
     super.initState();
+    LocalDeviceService().init();
     // Check if an emergency was already active
     context.read<EmergencyBloc>().add(CheckActiveEmergencyEvent());
   }
@@ -146,14 +148,19 @@ class _HomeDashboardScreenState extends State<HomeDashboardScreen> {
                 const SizedBox(height: 18),
 
                 // Device & Protection Overview Card (Clickable to open Devices Screen!)
-                StatusOverviewCard(
-                  isDeviceConnected: true,
-                  batteryPercent: 85,
-                  safetyScore: 92.0,
-                  guardianStatus: 'Mother ● Online',
-                  isCameraLive: true,
-                  currentLocationName: 'Central Safe Corridor',
-                  onTap: () => Navigator.pushNamed(context, AppRoutes.devices),
+                ValueListenableBuilder<LocalDeviceState>(
+                  valueListenable: LocalDeviceService().connectionState,
+                  builder: (context, localDev, _) {
+                    return StatusOverviewCard(
+                      isDeviceConnected: localDev.isWearableOnline,
+                      batteryPercent: localDev.wearableBattery,
+                      safetyScore: 92.0,
+                      guardianStatus: 'Mother ● Online',
+                      isCameraLive: localDev.isCameraOnline,
+                      currentLocationName: 'Central Safe Corridor',
+                      onTap: () => Navigator.pushNamed(context, AppRoutes.devices),
+                    );
+                  },
                 ),
                 const SizedBox(height: 28),
 

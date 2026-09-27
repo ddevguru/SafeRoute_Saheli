@@ -74,7 +74,7 @@ class RoutingRepository {
       'start_lng': startLng,
       'dest_lat': destLat,
       'dest_lng': destLng,
-    });
+    }, requireAuth: false);
     final routes = response['routes'] as List? ?? [];
     return routes.map((r) => RouteOptionModel.fromJson(r)).toList();
   }
