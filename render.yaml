@@ -54,8 +54,6 @@ services:
   - type: web
     name: saferoute-saheli-admin
     runtime: static
-    region: singapore
-    plan: free
     buildCommand: "cd admin_panel && npm install && npm run build"
     staticPublishPath: "./admin_panel/dist"
     routes:
