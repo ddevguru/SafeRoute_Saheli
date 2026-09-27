@@ -40,6 +40,7 @@ def create_app(config_name: str = None) -> Flask:
     from backend.app.admin.routes import admin_bp
     from backend.app.notification.routes import notification_bp
     from backend.app.notification.firebase_admin_client import FirebaseAdminClient
+    from backend.app.routes.docs import docs_bp
 
     app.register_blueprint(auth_bp)
     app.register_blueprint(guardian_bp)
@@ -53,6 +54,7 @@ def create_app(config_name: str = None) -> Flask:
     app.register_blueprint(ai_bp)
     app.register_blueprint(admin_bp)
     app.register_blueprint(notification_bp)
+    app.register_blueprint(docs_bp)
 
     # Route aliases for singular/plural endpoint parity
     app.add_url_rule('/api/guardian/add', view_func=app.view_functions['guardian.add_guardian'], methods=['POST'])

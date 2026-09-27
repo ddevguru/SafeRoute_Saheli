@@ -1,0 +1,164 @@
+{
+  "info": {
+    "name": "SafeRoute Saheli — Complete API Collection",
+    "description": "Postman Collection for SafeRoute Saheli AI + IoT + Mobile + Cloud Women Safety Ecosystem.",
+    "schema": "https://schema.getpostman.com/json/collection/v2.1.0/collection.json"
+  },
+  "variable": [
+    {"key": "base_url", "value": "http://127.0.0.1:5000", "type": "string"},
+    {"key": "access_token", "value": "", "type": "string"},
+    {"key": "incident_id", "value": "", "type": "string"},
+    {"key": "tracking_token", "value": "", "type": "string"}
+  ],
+  "item": [
+    {
+      "name": "1. Authentication",
+      "item": [
+        {
+          "name": "Register Saheli",
+          "request": {
+            "method": "POST",
+            "header": [{"key": "Content-Type", "value": "application/json"}],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"name\": \"Rupali Sharma\",\n  \"email\": \"rupali@saheli.org\",\n  \"phone\": \"+919876543210\",\n  \"password\": \"SecurePass2026!\",\n  \"role\": \"SAHELI\"\n}"
+            },
+            "url": {"raw": "{{base_url}}/api/auth/register", "host": ["{{base_url}}"], "path": ["api", "auth", "register"]}
+          }
+        },
+        {
+          "name": "Login Saheli",
+          "request": {
+            "method": "POST",
+            "header": [{"key": "Content-Type", "value": "application/json"}],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"username_or_email\": \"rupali@saheli.org\",\n  \"password\": \"SecurePass2026!\",\n  \"role\": \"SAHELI\"\n}"
+            },
+            "url": {"raw": "{{base_url}}/api/auth/login", "host": ["{{base_url}}"], "path": ["api", "auth", "login"]}
+          }
+        }
+      ]
+    },
+    {
+      "name": "2. Emergency Orchestration",
+      "item": [
+        {
+          "name": "Trigger Touch SOS",
+          "request": {
+            "method": "POST",
+            "header": [{"key": "Content-Type", "value": "application/json"}],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"device_id\": \"SAHELI-WEARABLE-001\",\n  \"device_secret\": \"wearable_secret_2026\",\n  \"trigger_type\": \"TOUCH\",\n  \"latitude\": 28.6145,\n  \"longitude\": 77.2095,\n  \"battery_percent\": 92,\n  \"confidence\": 1.0\n}"
+            },
+            "url": {"raw": "{{base_url}}/api/emergency/trigger", "host": ["{{base_url}}"], "path": ["api", "emergency", "trigger"]}
+          }
+        },
+        {
+          "name": "Get Active Incident",
+          "request": {
+            "method": "GET",
+            "header": [{"key": "Authorization", "value": "Bearer {{access_token}}"}],
+            "url": {"raw": "{{base_url}}/api/emergency/active", "host": ["{{base_url}}"], "path": ["api", "emergency", "active"]}
+          }
+        },
+        {
+          "name": "Cancel / De-escalate Emergency",
+          "request": {
+            "method": "POST",
+            "header": [
+              {"key": "Content-Type", "value": "application/json"},
+              {"key": "Authorization", "value": "Bearer {{access_token}}"}
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"reason\": \"User confirmed safe situation\"\n}"
+            },
+            "url": {"raw": "{{base_url}}/api/emergency/{{incident_id}}/cancel", "host": ["{{base_url}}"], "path": ["api", "emergency", "{{incident_id}}", "cancel"]}
+          }
+        }
+      ]
+    },
+    {
+      "name": "3. Live GPS & Public Tracking",
+      "item": [
+        {
+          "name": "Update GPS Coordinates",
+          "request": {
+            "method": "POST",
+            "header": [{"key": "Content-Type", "value": "application/json"}],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"device_id\": \"SAHELI-WEARABLE-001\",\n  \"device_secret\": \"wearable_secret_2026\",\n  \"latitude\": 28.6148,\n  \"longitude\": 77.2098,\n  \"accuracy\": 3.5,\n  \"speed\": 1.2,\n  \"battery\": 90\n}"
+            },
+            "url": {"raw": "{{base_url}}/api/location/update", "host": ["{{base_url}}"], "path": ["api", "location", "update"]}
+          }
+        },
+        {
+          "name": "Public Tracking Link Polling API",
+          "request": {
+            "method": "GET",
+            "url": {"raw": "{{base_url}}/track/{{tracking_token}}/api", "host": ["{{base_url}}"], "path": ["track", "{{tracking_token}}", "api"]}
+          }
+        }
+      ]
+    },
+    {
+      "name": "4. Audio Intelligence",
+      "item": [
+        {
+          "name": "Analyze Audio Features",
+          "request": {
+            "method": "POST",
+            "header": [{"key": "Content-Type", "value": "application/json"}],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"peak\": 0.88,\n  \"rms\": 0.36,\n  \"zcr\": 0.20,\n  \"spectral_centroid\": 2700.0\n}"
+            },
+            "url": {"raw": "{{base_url}}/api/audio/analyze", "host": ["{{base_url}}"], "path": ["api", "audio", "analyze"]}
+          }
+        },
+        {
+          "name": "Voice Keyword Spotting",
+          "request": {
+            "method": "POST",
+            "header": [{"key": "Content-Type", "value": "application/json"}],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"phrase\": \"HELP SAVE ME\"\n}"
+            },
+            "url": {"raw": "{{base_url}}/api/audio/keyword", "host": ["{{base_url}}"], "path": ["api", "audio", "keyword"]}
+          }
+        }
+      ]
+    },
+    {
+      "name": "5. Nearby Services & Safe Routing",
+      "item": [
+        {
+          "name": "Nearby Police, Hospitals & Safe Places",
+          "request": {
+            "method": "GET",
+            "url": {"raw": "{{base_url}}/api/nearby/all?lat=28.6139&lng=77.2090&radius_meters=6000", "host": ["{{base_url}}"], "path": ["api", "nearby", "all"], "query": [{"key": "lat", "value": "28.6139"}, {"key": "lng", "value": "77.2090"}, {"key": "radius_meters", "value": "6000"}]}
+          }
+        },
+        {
+          "name": "Calculate Safe Routes",
+          "request": {
+            "method": "POST",
+            "header": [
+              {"key": "Content-Type", "value": "application/json"},
+              {"key": "Authorization", "value": "Bearer {{access_token}}"}
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"start_lat\": 28.6139,\n  \"start_lng\": 77.2090,\n  \"dest_lat\": 28.6300,\n  \"dest_lng\": 77.2200,\n  \"hour_of_day\": 22\n}"
+            },
+            "url": {"raw": "{{base_url}}/api/routes/calculate", "host": ["{{base_url}}"], "path": ["api", "routes", "calculate"]}
+          }
+        }
+      ]
+    }
+  ]
+}
