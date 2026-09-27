@@ -11,6 +11,8 @@ import { SafePlacesDirectory } from './pages/SafePlacesDirectory';
 import { AIRiskAnalytics } from './pages/AIRiskAnalytics';
 import { UsersDirectory } from './pages/UsersDirectory';
 import { AuditLogs } from './pages/AuditLogs';
+import { ForensicAuditVault } from './pages/ForensicAuditVault';
+import { GeoFenceSafeZones } from './pages/GeoFenceSafeZones';
 
 // Protected Layout Container
 const ProtectedLayout = ({ children }) => {
@@ -77,6 +79,18 @@ export const App = () => {
           <Route path="/risk-analytics" element={
             <ProtectedLayout>
               <AIRiskAnalytics />
+            </ProtectedLayout>
+          } />
+
+          <Route path="/forensics" element={
+            <ProtectedLayout>
+              <ForensicAuditVault />
+            </ProtectedLayout>
+          } />
+
+          <Route path="/geofence" element={
+            <ProtectedLayout>
+              <GeoFenceSafeZones />
             </ProtectedLayout>
           } />
 

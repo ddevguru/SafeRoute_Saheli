@@ -10,7 +10,9 @@ import {
   Users,
   LogOut,
   ShieldCheck,
-  Video
+  Video,
+  Compass,
+  FileCheck
 } from 'lucide-react';
 import { useAuth } from '../context/AuthContext';
 
@@ -54,6 +56,11 @@ export const Sidebar = ({ activeEmergencyCount = 0 }) => {
           <span>Wearables & CAMs</span>
         </NavLink>
 
+        <NavLink to="/geofence" className={({ isActive }) => `nav-link ${isActive ? 'active' : ''}`}>
+          <Compass size={18} />
+          <span>Geo-Fence & Battery</span>
+        </NavLink>
+
         <div className="nav-section-title">AI & Soft Computing</div>
 
         <NavLink to="/risk-analytics" className={({ isActive }) => `nav-link ${isActive ? 'active' : ''}`}>
@@ -67,6 +74,11 @@ export const Sidebar = ({ activeEmergencyCount = 0 }) => {
         </NavLink>
 
         <div className="nav-section-title">System & Security</div>
+
+        <NavLink to="/forensics" className={({ isActive }) => `nav-link ${isActive ? 'active' : ''}`}>
+          <FileCheck size={18} />
+          <span>Forensic Vault & Merkle</span>
+        </NavLink>
 
         <NavLink to="/users" className={({ isActive }) => `nav-link ${isActive ? 'active' : ''}`}>
           <Users size={18} />

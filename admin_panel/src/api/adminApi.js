@@ -114,4 +114,36 @@ export const adminApi = {
   getUsers: async () => {
     return request('/admin/users');
   },
+
+  // Forensics Chain of Custody & Merkle Engine
+  getEvidenceChain: async (incidentId) => {
+    return request(`/evidence/${incidentId}/chain`);
+  },
+
+  verifyEvidenceIntegrity: async (incidentId) => {
+    return request(`/evidence/${incidentId}/verify-integrity`, {
+      method: 'POST',
+    });
+  },
+
+  getEvidenceCertificate: async (incidentId) => {
+    return request(`/evidence/${incidentId}/certificate`);
+  },
+
+  // Geo-Fence Safe Zones & Battery Optimizer
+  getSafeZones: async () => {
+    return request('/geofence/zones');
+  },
+
+  createSafeZone: async (zoneData) => {
+    return request('/geofence/zones', {
+      method: 'POST',
+      body: JSON.stringify(zoneData),
+    });
+  },
+
+  checkGeofenceStatus: async (lat, lng) => {
+    return request(`/geofence/check?lat=${lat}&lng=${lng}`);
+  },
 };
+
