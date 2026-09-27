@@ -33,9 +33,18 @@ class Config:
     def get_database_uri():
         raw_url = os.getenv("DATABASE_URL")
         if raw_url:
-            # Render sets postgres://, but SQLAlchemy 1.4+ / 2.0 requires postgresql://
+            # Render provisions PostgreSQL as 'postgres://...' or 'postgresql://...'
+            # SQLAlchemy 2.0+ requires 'postgresql://' instead of legacy 'postgres://'
             if raw_url.startswith("postgres://"):
-                return raw_url.replace("postgres://", "postgresql://", 1)
+                raw_url = raw_url.replace("postgres://", "postgresql://", 1)
+            
+            # SQLAlchemy 2.0 defaults bare 'postgresql://' to psycopg (v3).
+            # If psycopg (v3) is not installed, automatically fall back to psycopg2 driver
+            if raw_url.startswith("postgresql://") and not ("+" in raw_url.split("://")[0]):
+                try:
+                    import psycopg  # noqa: F401
+                except ImportError:
+                    raw_url = raw_url.replace("postgresql://", "postgresql+psycopg2://", 1)
             return raw_url
 
         # Check for explicit PostgreSQL host
