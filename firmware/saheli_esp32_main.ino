@@ -25,11 +25,12 @@
 #include <HTTPClient.h>
 #include <WebServer.h>
 #include <Wire.h>
-#include <driver/i2s.h>
+#include <ESP_I2S.h>
 #include "soc/soc.h"
 #include "soc/rtc_cntl_reg.h"
 
 WebServer* localServer = nullptr;
+I2SClass*  i2sMic      = nullptr;
 
 // =====================================================================================
 // 1. USER CONFIGURATION & CLOUD CREDENTIALS
@@ -302,35 +303,18 @@ void pollGPS() {
 // 8. INMP441 I2S DIGITAL MICROPHONE DRIVER & 3-CLAP SOS DETECTOR
 // =====================================================================================
 bool initI2SMicrophone() {
-    i2s_config_t i2s_config = {
-        .mode                 = (i2s_mode_t)(I2S_MODE_MASTER | I2S_MODE_RX),
-        .sample_rate          = 16000,
-        .bits_per_sample      = I2S_BITS_PER_SAMPLE_16BIT,
-        .channel_format       = I2S_CHANNEL_FMT_ONLY_LEFT,
-        .communication_format = I2S_COMM_FORMAT_STAND_I2S,
-        .intr_alloc_flags     = ESP_INTR_FLAG_LEVEL1,
-        .dma_buf_count        = 4,
-        .dma_buf_len          = 256,
-        .use_apll             = false
-    };
-
-    i2s_pin_config_t pin_config = {
-        .bck_io_num   = PIN_I2S_SCK,
-        .ws_io_num    = PIN_I2S_WS,
-        .data_out_num = I2S_PIN_NO_CHANGE,
-        .data_in_num  = PIN_I2S_SD
-    };
-
-    esp_err_t err = i2s_driver_install(I2S_NUM_0, &i2s_config, 0, NULL);
-    if (err != ESP_OK) return false;
-    err = i2s_set_pin(I2S_NUM_0, &pin_config);
-    return (err == ESP_OK);
+    if (i2sMic == nullptr) {
+        i2sMic = new I2SClass();
+    }
+    i2sMic->setPins(PIN_I2S_SCK, PIN_I2S_WS, -1, PIN_I2S_SD);
+    return i2sMic->begin(I2S_MODE_STD, 16000, I2S_DATA_BIT_WIDTH_16BIT, I2S_SLOT_MODE_MONO, I2S_STD_SLOT_LEFT);
 }
 
 bool detectClapSpike() {
+    if (i2sMic == nullptr) return false;
     int16_t sampleBuffer[128];
-    size_t bytesRead = 0;
-    i2s_read(I2S_NUM_0, &sampleBuffer, sizeof(sampleBuffer), &bytesRead, pdMS_TO_TICKS(10));
+    size_t bytesRead = i2sMic->readBytes((char*)sampleBuffer, sizeof(sampleBuffer));
+    if (bytesRead == 0) return false;
     
     int samples = bytesRead / sizeof(int16_t);
     int maxAmplitude = 0;
