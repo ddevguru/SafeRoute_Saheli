@@ -26,15 +26,17 @@
 #include <WebServer.h>
 #include <Wire.h>
 #include <driver/i2s.h>
+#include "soc/soc.h"
+#include "soc/rtc_cntl_reg.h"
 
-WebServer localServer(80);
+WebServer* localServer = nullptr;
 
 // =====================================================================================
 // 1. USER CONFIGURATION & CLOUD CREDENTIALS
 // =====================================================================================
 // Enter your WiFi Credentials here:
-const char* WIFI_SSID         = "YOUR_WIFI_NAME";        // <-- Apne WiFi ka naam yahan dalein
-const char* WIFI_PASSWORD     = "YOUR_WIFI_PASSWORD";    // <-- Apne WiFi ka password yahan dalein
+const char* WIFI_SSID         = "Nothing Phone (3a) Lite_1682";        // <-- Apne WiFi ka naam yahan dalein
+const char* WIFI_PASSWORD     = "Nothing3a";    // <-- Apne WiFi ka password yahan dalein
 
 // Live Render Backend API URL:
 const char* BACKEND_BASE_URL  = "https://saferoute-saheli-backend.onrender.com/api";
@@ -128,9 +130,11 @@ void pulseHaptic(int durationMs) {
 void playStartupTone() {
     digitalWrite(PIN_STATUS_LED, HIGH);
     digitalWrite(PIN_BUZZER, HIGH);
-    pulseHaptic(150);
+    delay(40);
     digitalWrite(PIN_BUZZER, LOW);
     digitalWrite(PIN_STATUS_LED, LOW);
+    delay(50);
+    pulseHaptic(60);
 }
 
 void updateAlarmActuators() {
@@ -491,8 +495,11 @@ void audioCoreTask(void* parameter) {
 // 11. ARDUINO SETUP & LOOP (BULLETPROOF INITIALIZATION)
 // =====================================================================================
 void setup() {
+    // Disable brownout detector to prevent false reset on USB power sag
+    WRITE_PERI_REG(RTC_CNTL_BROWN_OUT_REG, 0);
+
     Serial.begin(115200);
-    delay(100);
+    delay(200);
     Serial.println();
     Serial.println("==================================================================");
     Serial.println("   SAFEROUTE SAHELI — MAIN ESP32 WEARABLE SAFETY DEVICE           ");
@@ -577,8 +584,11 @@ void setup() {
     }
     Serial.flush();
 
+    // Initialize WebServer pointer after Wi-Fi stack is active
+    localServer = new WebServer(80);
+
     // Register local HTTP endpoints for Mobile App
-    localServer.on("/", HTTP_GET, []() {
+    localServer->on("/", HTTP_GET, []() {
         float v = readBatteryVoltage();
         int pct = calculateBatteryPercent(v);
         String html = "<!DOCTYPE html><html><head><meta name='viewport' content='width=device-width, initial-scale=1'><title>Saheli Smart Band</title>";
@@ -596,11 +606,11 @@ void setup() {
         html += "<p><b>Emergency:</b> " + String(emergencyActive ? "<b style='color:#EF4444'>ACTIVE SOS</b>" : "NORMAL") + "</p>";
         html += "<a class='btn' href='/test-alarm'>Test Hardware Alarm</a>";
         html += "</div></body></html>";
-        localServer.sendHeader("Access-Control-Allow-Origin", "*");
-        localServer.send(200, "text/html", html);
+        localServer->sendHeader("Access-Control-Allow-Origin", "*");
+        localServer->send(200, "text/html", html);
     });
 
-    localServer.on("/status", HTTP_GET, []() {
+    localServer->on("/status", HTTP_GET, []() {
         float v = readBatteryVoltage();
         int pct = calculateBatteryPercent(v);
         String json = "{";
@@ -618,16 +628,16 @@ void setup() {
         json += "\"firmware_version\":\"" + String(FIRMWARE_VERSION) + "\",";
         json += "\"uptime_s\":" + String(millis() / 1000);
         json += "}";
-        localServer.sendHeader("Access-Control-Allow-Origin", "*");
-        localServer.send(200, "application/json", json);
+        localServer->sendHeader("Access-Control-Allow-Origin", "*");
+        localServer->send(200, "application/json", json);
     });
 
-    localServer.on("/ping", HTTP_GET, []() {
-        localServer.sendHeader("Access-Control-Allow-Origin", "*");
-        localServer.send(200, "application/json", "{\"pong\":true,\"device_id\":\"" + String(DEVICE_ID) + "\"}");
+    localServer->on("/ping", HTTP_GET, []() {
+        localServer->sendHeader("Access-Control-Allow-Origin", "*");
+        localServer->send(200, "application/json", "{\"pong\":true,\"device_id\":\"" + String(DEVICE_ID) + "\"}");
     });
 
-    localServer.on("/test-alarm", HTTP_ANY, []() {
+    localServer->on("/test-alarm", HTTP_ANY, []() {
         digitalWrite(PIN_BUZZER, HIGH);
         digitalWrite(PIN_VIBRATION, HIGH);
         digitalWrite(PIN_STATUS_LED, HIGH);
@@ -635,11 +645,11 @@ void setup() {
         digitalWrite(PIN_BUZZER, LOW);
         digitalWrite(PIN_VIBRATION, LOW);
         digitalWrite(PIN_STATUS_LED, LOW);
-        localServer.sendHeader("Access-Control-Allow-Origin", "*");
-        localServer.send(200, "application/json", "{\"success\":true,\"message\":\"Hardware siren and haptic motor activated on local Wi-Fi!\"}");
+        localServer->sendHeader("Access-Control-Allow-Origin", "*");
+        localServer->send(200, "application/json", "{\"success\":true,\"message\":\"Hardware siren and haptic motor activated on local Wi-Fi!\"}");
     });
 
-    localServer.begin();
+    localServer->begin();
     Serial.println("[Setup] Local HTTP server active on port 80");
     Serial.println("[Setup] System Initialization Complete. Wearable Active.\n");
     Serial.flush();
@@ -713,7 +723,9 @@ void loop() {
     }
 
     // 8. Service local Wi-Fi HTTP requests from mobile app on same network
-    localServer.handleClient();
+    if (localServer != nullptr) {
+        localServer->handleClient();
+    }
 
     // 9. Process Serial Testing Commands
     if (Serial.available()) {
