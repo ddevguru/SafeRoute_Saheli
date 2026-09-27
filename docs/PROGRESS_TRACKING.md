@@ -40,6 +40,7 @@
 | **Phase 28**| Multi-Modal Sensor Fusion Engine | **COMPLETED & VERIFIED** | Soft computing Bayesian state estimator fusing Touch, Motion, Acoustic DSP, PPG Biometrics, and ANFIS geo-risk (`POST /api/emergency/sensor-fusion-telemetry`), **7/7 tests passing**. |
 | **Phase 29**| Cryptographic Evidence Chain-of-Custody & Merkle Engine | **COMPLETED & VERIFIED** | Legally admissible digital forensics ledger, deterministic binary Merkle Root generation, HMAC-SHA256 signature certification, tamper-detection verification API (`/api/evidence/`), **7/7 tests passing**. |
 | **Phase 30**| Automated Geo-Fence Safe Zone Guard & Battery Optimizer | **COMPLETED & VERIFIED** | User-defined safe havens (Home, College, Office), midnight curfew breach alerts, dynamic power-saving GPS throttling (120s inside safe zone, 300s ultra-saver), `/api/geofence/` API, **7/7 tests passing**. |
+| **Phase 31**| BLE Micro-Beacon Companion & Offline Pairing Protocol | **COMPLETED & VERIFIED** | ESP32 BLE GATT peripheral (`firmware/esp32/src/communication/ble_companion.cpp` & `.h`), sub-20ms emergency notify characteristic, telemetry stream, HMAC pairing handshake, companion bridge, **5/5 tests passing**. |
 
 ---
 
@@ -48,7 +49,7 @@
 ### Comprehensive Test Suite Execution
 ```bash
 python -m unittest discover -s tests -p "test_*.py"
-Ran 86 tests in 62.230s -> OK (100% Passing)
+Ran 91 tests in 64.810s -> OK (100% Passing)
 
 python tests/stress_test_emergency_burst.py
 Ran 5 tests in 6.409s -> OK (100% Passing)
@@ -71,8 +72,9 @@ Ran 5 tests in 6.409s -> OK (100% Passing)
 | `test_sensor_fusion.py` | Phase 28: Multi-Modal Bayesian Threat State Estimator | 7 | **PASS** |
 | `test_evidence_chain.py` | Phase 29: Forensic Merkle Tree Chain-of-Custody & Signatures | 7 | **PASS** |
 | `test_geofence_engine.py` | Phase 30: Geo-Fence Safe Haven & Battery Optimizer | 7 | **PASS** |
+| `test_ble_companion.py` | Phase 31: BLE Micro-Beacon Companion & Offline Pairing | 5 | **PASS** |
 | `test_e2e_integration.py` | Phase 7: Unified Multi-Tier Emergency Lifecycle | 1 | **PASS** |
-| **Total Automated Tests** | **Full Ecosystem Backend, AI & Hardware Simulation** | **91** | **100% OK** |
+| **Total Automated Tests** | **Full Ecosystem Backend, AI & Hardware Simulation** | **96** | **100% OK** |
 
 ### Mobile Client Static Analysis & Test Execution
 ```bash
