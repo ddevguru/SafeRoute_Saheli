@@ -76,7 +76,7 @@ If you prefer to create each service manually through the Render dashboard UI:
    - **Branch**: `main`
    - **Runtime**: `Python`
    - **Build Command**: `pip install --upgrade pip && pip install -r requirements.txt && python backend/scripts/init_db.py`
-   - **Start Command**: `gunicorn --worker-class eventlet -w 1 --bind 0.0.0.0:$PORT run:app`
+   - **Start Command**: `gunicorn --worker-class gthread -w 1 --threads 8 --bind 0.0.0.0:$PORT run:app`
    - **Plan**: `Free`
 4. Add **Environment Variables**:
    | Variable | Value | Notes |

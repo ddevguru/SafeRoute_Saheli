@@ -24,7 +24,7 @@ services:
     region: singapore
     plan: free
     buildCommand: "pip install --upgrade pip && pip install -r requirements.txt && python backend/scripts/init_db.py"
-    startCommand: "gunicorn --worker-class eventlet -w 1 --bind 0.0.0.0:$PORT run:app"
+    startCommand: "gunicorn --worker-class gthread -w 1 --threads 8 --bind 0.0.0.0:$PORT run:app"
     healthCheckPath: "/api/health"
     envVars:
       - key: PYTHON_VERSION
