@@ -26,7 +26,6 @@
 #include <WebServer.h>
 #include <Wire.h>
 #include <driver/i2s.h>
-#include <HardwareSerial.h>
 
 WebServer localServer(80);
 
@@ -476,144 +475,93 @@ void sendGPSTelemetry() {
 // 10. FREERTOS DUAL-CORE MULTITASKING TASKS
 // =====================================================================================
 
-// Core 0: High-Frequency Audio DSP (Never misses acoustic clap pulses)
+// Core 0: High-Frequency Audio DSP (Spawned only if physical I2S microphone is detected)
 void audioCoreTask(void* parameter) {
     Serial.println("[Core 0] Audio Clap Listening Task Active.");
     while (true) {
-        if (hasI2SMic) {
-            if (updateClapPattern()) {
-                Serial.println("[Core 0] >>> 3-CLAP EMERGENCY PATTERN DETECTED! <<<");
-                triggerEmergencySOS("CLAP", 0.95f);
-            }
-            vTaskDelay(pdMS_TO_TICKS(5));
-        } else {
-            vTaskDelay(pdMS_TO_TICKS(500));
+        if (hasI2SMic && updateClapPattern()) {
+            Serial.println("[Core 0] >>> 3-CLAP EMERGENCY PATTERN DETECTED! <<<");
+            triggerEmergencySOS("CLAP", 0.95f);
         }
-    }
-}
-
-// Core 1: System Supervisor (Sensors, GPS, WiFi, Network, Alarms)
-void supervisorCoreTask(void* parameter) {
-    Serial.println("[Core 1] Sensor & Network Supervisor Active.");
-    while (true) {
-        unsigned long now = millis();
-
-        // 1. Maintain WiFi Connection (if configured)
-        if (String(WIFI_SSID) != "YOUR_WIFI_NAME" && WiFi.status() != WL_CONNECTED) {
-            static unsigned long lastReconnect = 0;
-            if (now - lastReconnect > 20000) {
-                lastReconnect = now;
-                Serial.println("[WiFi STA] Reconnecting to router...");
-                WiFi.begin(WIFI_SSID, WIFI_PASSWORD);
-            }
-        }
-
-        // 2. Poll GPS Module (Non-blocking)
-        pollGPS();
-
-        // 3. TTP223 Touch SOS Check (1.5-second continuous press)
-        bool touchState = (digitalRead(PIN_TOUCH_SENSOR) == HIGH);
-        if (touchState) {
-            if (!touchPressed) {
-                touchPressed = true;
-                touchStartTime = now;
-            } else if (now - touchStartTime >= TOUCH_HOLD_TRIGGER_MS) {
-                triggerEmergencySOS("TOUCH", 1.00f);
-                touchPressed = false; // Reset after trigger
-            }
-        } else {
-            touchPressed = false;
-        }
-
-        // 4. MPU-6050 Motion Anomaly Check (Only if sensor was detected)
-        if (hasMPU) {
-            bool isFall = false, isStruggle = false;
-            float aMag = 0, gMag = 0;
-            checkMotionEvents(isFall, isStruggle, aMag, gMag);
-            if (isFall) {
-                Serial.printf("[Motion] Fall Detected! (Accel: %.2f G)\n", aMag);
-                triggerEmergencySOS("MOTION_FALL", 0.90f);
-            } else if (isStruggle) {
-                Serial.printf("[Motion] Struggle Detected! (Gyro: %.2f deg/s)\n", gMag);
-                triggerEmergencySOS("MOTION_STRUGGLE", 0.85f);
-            }
-        }
-
-        // 5. Update Actuator Alarms
-        updateAlarmActuators();
-
-        // 6. Periodic Heartbeat
-        if (now - lastHeartbeatTime >= INTERVAL_HEARTBEAT) {
-            lastHeartbeatTime = now;
-            sendCloudHeartbeat();
-        }
-
-        // 7. Periodic GPS Push (Higher frequency if SOS is active)
-        unsigned long gpsInterval = emergencyActive ? INTERVAL_EMERGENCY_GPS : INTERVAL_NORMAL_GPS;
-        if (now - lastGpsPushTime >= gpsInterval) {
-            lastGpsPushTime = now;
-            sendGPSTelemetry();
-        }
-
-        vTaskDelay(pdMS_TO_TICKS(20));
+        vTaskDelay(pdMS_TO_TICKS(5));
     }
 }
 
 // =====================================================================================
-// 11. ARDUINO SETUP & LOOP
+// 11. ARDUINO SETUP & LOOP (BULLETPROOF INITIALIZATION)
 // =====================================================================================
 void setup() {
     Serial.begin(115200);
-    delay(500);
-
-    Serial.println("\n==================================================================");
+    delay(100);
+    Serial.println();
+    Serial.println("==================================================================");
     Serial.println("   SAFEROUTE SAHELI — MAIN ESP32 WEARABLE SAFETY DEVICE           ");
     Serial.printf ("   Firmware: %s | Device ID: %s\n", FIRMWARE_VERSION, DEVICE_ID);
     Serial.printf ("   Target Backend: %s\n", BACKEND_BASE_URL);
     Serial.println("==================================================================");
+    Serial.flush();
 
     // 1. Initialize Actuators (Buzzer, Vibration, Status LED)
     initActuators();
     playStartupTone();
+    Serial.println("[Setup 1/6] Actuators initialized (Buzzer: GPIO 14, Vibration: GPIO 15, LED: GPIO 2)");
+    Serial.flush();
 
     // 2. Initialize TTP223 Capacitive Touch
     pinMode(PIN_TOUCH_SENSOR, INPUT);
+    Serial.println("[Setup 2/6] TTP223 Capacitive Touch Sensor initialized on GPIO 13");
+    Serial.flush();
 
-    // 3. Initialize MPU-6050 Motion Sensor (Safe check)
+    // 3. Initialize MPU-6050 Motion Sensor (Safe check with timeout)
     hasMPU = initMPU6050();
     if (hasMPU) {
-        Serial.println("[Setup] MPU-6050 6-Axis Motion Sensor: OK");
+        Serial.println("[Setup 3/6] MPU-6050 6-Axis Motion Sensor: OK");
     } else {
-        Serial.println("[Setup] Note: MPU-6050 not detected on I2C. Motion alarms bypassed safely.");
+        Serial.println("[Setup 3/6] Note: MPU-6050 not detected on I2C. Motion alarms bypassed safely.");
     }
+    Serial.flush();
 
     // 4. Initialize NEO-6M GPS on UART2
     gpsSerial.begin(9600, SERIAL_8N1, PIN_GPS_RX, PIN_GPS_TX);
-    Serial.println("[Setup] NEO-6M GPS Receiver (UART2): Initialized");
+    Serial.println("[Setup 4/6] NEO-6M GPS Receiver (UART2): Initialized on GPIO 16/17");
+    Serial.flush();
 
     // 5. Initialize INMP441 I2S Microphone (Safe check)
     hasI2SMic = initI2SMicrophone();
     if (hasI2SMic) {
-        Serial.println("[Setup] INMP441 I2S Digital Microphone: OK");
+        Serial.println("[Setup 5/6] INMP441 I2S Digital Microphone: OK");
+        // Spawn audio clap task on Core 0 only when mic is present
+        xTaskCreatePinnedToCore(
+            audioCoreTask,
+            "AudioCoreTask",
+            4096,
+            NULL,
+            1,
+            &audioTaskHandle,
+            0
+        );
     } else {
-        Serial.println("[Setup] Note: INMP441 I2S Microphone not detected. Acoustic clap listener bypassed safely.");
+        Serial.println("[Setup 5/6] Note: INMP441 I2S Microphone not detected. Clap detector bypassed safely.");
     }
+    Serial.flush();
 
     // 6. Connect to WiFi & Start SoftAP Direct Hotspot
     WiFi.mode(WIFI_AP_STA);
     WiFi.softAP("Saheli_Smart_Band", "12345678");
-    IPAddress apIP = WiFi.softAPIP(); // Typically 192.168.4.1
+    delay(100);
+    IPAddress apIP = WiFi.softAPIP();
     Serial.println("\n--------------------------------------------------");
     Serial.println("[WiFi AP] SoftAP Hotspot Created: 'Saheli_Smart_Band'");
     Serial.printf ("[WiFi AP] Hotspot Direct URL:     http://%s (Password: 12345678)\n", apIP.toString().c_str());
     Serial.println("--------------------------------------------------");
+    Serial.flush();
 
     if (String(WIFI_SSID) != "YOUR_WIFI_NAME") {
         Serial.printf("[WiFi STA] Connecting to Router: %s\n", WIFI_SSID);
         WiFi.begin(WIFI_SSID, WIFI_PASSWORD);
         int attempts = 0;
-        while (WiFi.status() != WL_CONNECTED && attempts < 15) {
-            delay(400);
+        while (WiFi.status() != WL_CONNECTED && attempts < 10) {
+            delay(300);
             Serial.print(".");
             attempts++;
         }
@@ -627,8 +575,9 @@ void setup() {
         Serial.println("[WiFi STA] Notice: Set WIFI_SSID & WIFI_PASSWORD to connect directly to home router/cloud.");
         Serial.println("[WiFi STA] Defaulting to Direct AP mode (Connect phone to 'Saheli_Smart_Band').");
     }
+    Serial.flush();
 
-    // Register local HTTP endpoints for Mobile App (accessible via SoftAP or Router IP)
+    // Register local HTTP endpoints for Mobile App
     localServer.on("/", HTTP_GET, []() {
         float v = readBatteryVoltage();
         int pct = calculateBatteryPercent(v);
@@ -679,11 +628,10 @@ void setup() {
     });
 
     localServer.on("/test-alarm", HTTP_ANY, []() {
-        // Pulse buzzer and vibration motor for 1.5 seconds to confirm local connection
         digitalWrite(PIN_BUZZER, HIGH);
         digitalWrite(PIN_VIBRATION, HIGH);
         digitalWrite(PIN_STATUS_LED, HIGH);
-        delay(1500);
+        delay(1200);
         digitalWrite(PIN_BUZZER, LOW);
         digitalWrite(PIN_VIBRATION, LOW);
         digitalWrite(PIN_STATUS_LED, LOW);
@@ -692,44 +640,82 @@ void setup() {
     });
 
     localServer.begin();
-    Serial.println("[WebServer] Local HTTP server listening on port 80 (SoftAP IP: " + apIP.toString() + ")");
-
-    // 7. Spawn FreeRTOS Tasks across Dual Cores
-    // Core 0: High-Priority Audio DSP Task
-    xTaskCreatePinnedToCore(
-        audioCoreTask,
-        "AudioCoreTask",
-        8192,
-        NULL,
-        2, // Priority
-        &audioTaskHandle,
-        0  // Pin to Core 0
-    );
-
-    // Core 1: System Supervisor Task
-    xTaskCreatePinnedToCore(
-        supervisorCoreTask,
-        "SupervisorCoreTask",
-        8192,
-        NULL,
-        1, // Priority
-        &supervisorTaskHandle,
-        1  // Pin to Core 1
-    );
-
+    Serial.println("[Setup] Local HTTP server active on port 80");
     Serial.println("[Setup] System Initialization Complete. Wearable Active.\n");
+    Serial.flush();
+
     Serial.println("Available Serial Commands:");
     Serial.println("  't' -> Simulate Touch SOS");
     Serial.println("  'c' -> Simulate 3-Clap SOS");
     Serial.println("  'f' -> Simulate Fall SOS");
     Serial.println("  'r' -> Reset / Cancel SOS Alarm\n");
+    Serial.flush();
 }
 
 void loop() {
-    // Service local Wi-Fi HTTP requests from mobile app on same network
+    unsigned long now = millis();
+
+    // 1. Maintain WiFi Router Connection (if configured)
+    if (String(WIFI_SSID) != "YOUR_WIFI_NAME" && WiFi.status() != WL_CONNECTED) {
+        static unsigned long lastReconnect = 0;
+        if (now - lastReconnect > 20000) {
+            lastReconnect = now;
+            Serial.println("[WiFi STA] Reconnecting to router...");
+            WiFi.begin(WIFI_SSID, WIFI_PASSWORD);
+        }
+    }
+
+    // 2. Poll GPS Module (Non-blocking character stream)
+    pollGPS();
+
+    // 3. TTP223 Touch SOS Check (1.5-second continuous press)
+    bool touchState = (digitalRead(PIN_TOUCH_SENSOR) == HIGH);
+    if (touchState) {
+        if (!touchPressed) {
+            touchPressed = true;
+            touchStartTime = now;
+        } else if (now - touchStartTime >= TOUCH_HOLD_TRIGGER_MS) {
+            triggerEmergencySOS("TOUCH", 1.00f);
+            touchPressed = false; // Reset after trigger
+        }
+    } else {
+        touchPressed = false;
+    }
+
+    // 4. MPU-6050 Motion Anomaly Check (Only if sensor is physically connected)
+    if (hasMPU) {
+        bool isFall = false, isStruggle = false;
+        float aMag = 0, gMag = 0;
+        checkMotionEvents(isFall, isStruggle, aMag, gMag);
+        if (isFall) {
+            Serial.printf("[Motion] Fall Detected! (Accel: %.2f G)\n", aMag);
+            triggerEmergencySOS("MOTION_FALL", 0.90f);
+        } else if (isStruggle) {
+            Serial.printf("[Motion] Struggle Detected! (Gyro: %.2f deg/s)\n", gMag);
+            triggerEmergencySOS("MOTION_STRUGGLE", 0.85f);
+        }
+    }
+
+    // 5. Update Actuator Alarms
+    updateAlarmActuators();
+
+    // 6. Periodic Heartbeat
+    if (now - lastHeartbeatTime >= INTERVAL_HEARTBEAT) {
+        lastHeartbeatTime = now;
+        sendCloudHeartbeat();
+    }
+
+    // 7. Periodic GPS Push (Higher frequency if SOS is active)
+    unsigned long gpsInterval = emergencyActive ? INTERVAL_EMERGENCY_GPS : INTERVAL_NORMAL_GPS;
+    if (now - lastGpsPushTime >= gpsInterval) {
+        lastGpsPushTime = now;
+        sendGPSTelemetry();
+    }
+
+    // 8. Service local Wi-Fi HTTP requests from mobile app on same network
     localServer.handleClient();
 
-    // Process Serial Testing Commands
+    // 9. Process Serial Testing Commands
     if (Serial.available()) {
         char cmd = (char)Serial.read();
         switch (cmd) {
@@ -756,6 +742,5 @@ void loop() {
         }
     }
 
-    // FreeRTOS tasks handle all sensing, audio, and networking.
-    delay(20);
+    delay(10);
 }
