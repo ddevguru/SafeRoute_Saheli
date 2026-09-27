@@ -61,6 +61,12 @@
 #define MPU_FALL_ACCEL_G      2.8f  // Acceleration vector magnitude threshold for fall impact
 #define MPU_GYRO_RATE_DPS     200.0f// Angular velocity threshold for struggle/tumble
 
+// MAX30102 Biometric Pulse Oximeter Parameters
+#define MAX30102_I2C_ADDR     0x57  // MAX30102 factory I2C slave address
+#define PANIC_BPM_THRESHOLD   130.0f// Acute tachycardia panic trigger threshold (BPM)
+#define PANIC_BPM_DELTA       40.0f // Sudden BPM surge above baseline
+#define MIN_VALID_SPO2        85.0f // Hypoxia detection threshold
+
 // Battery Voltage Parameters (Li-Po 1S: 3.2V empty to 4.2V full)
 #define BATTERY_MIN_VOLTAGE   3.20f
 #define BATTERY_MAX_VOLTAGE   4.20f
