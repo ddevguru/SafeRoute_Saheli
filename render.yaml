@@ -1,0 +1,70 @@
+# ==============================================================================
+# SafeRoute Saheli — Render Infrastructure Blueprint
+# Auto-provisions:
+# 1. Managed PostgreSQL Database (saferoute-saheli-db)
+# 2. Flask REST & WebSocket Backend Web Service (saferoute-saheli-backend)
+# 3. React Operations Admin Panel Static Site (saferoute-saheli-admin)
+# ==============================================================================
+
+databases:
+  - name: saferoute-saheli-db
+    databaseName: saferoute_saheli
+    user: saheli_user
+    plan: free
+    region: singapore
+    postgresMajorVersion: 16
+
+services:
+  # ----------------------------------------------------------------------------
+  # 1. Python Flask REST & Real-Time WebSocket Backend
+  # ----------------------------------------------------------------------------
+  - type: web
+    name: saferoute-saheli-backend
+    runtime: python
+    region: singapore
+    plan: free
+    buildCommand: "pip install --upgrade pip && pip install -r requirements.txt && python backend/scripts/init_db.py"
+    startCommand: "gunicorn --worker-class eventlet -w 1 --bind 0.0.0.0:$PORT run:app"
+    healthCheckPath: "/api/health"
+    envVars:
+      - key: PYTHON_VERSION
+        value: 3.11.9
+      - key: FLASK_ENV
+        value: production
+      - key: DATABASE_URL
+        fromDatabase:
+          name: saferoute-saheli-db
+          property: connectionString
+      - key: SECRET_KEY
+        generateValue: true
+      - key: JWT_SECRET
+        generateValue: true
+      - key: CAMERA_STREAM_SECRET
+        generateValue: true
+      - key: DEVICE_SECRET
+        generateValue: true
+      - key: SESSION_TOKEN_SALT
+        generateValue: true
+      - key: TEST_MODE
+        value: "false"
+
+  # ----------------------------------------------------------------------------
+  # 2. Operations Admin Portal (React + Vite, Pure Vanilla CSS)
+  # ----------------------------------------------------------------------------
+  - type: web
+    name: saferoute-saheli-admin
+    runtime: static
+    region: singapore
+    plan: free
+    buildCommand: "cd admin_panel && npm install && npm run build"
+    staticPublishPath: "./admin_panel/dist"
+    routes:
+      - type: rewrite
+        source: /*
+        destination: /index.html
+    envVars:
+      - key: VITE_API_BASE_URL
+        fromService:
+          type: web
+          name: saferoute-saheli-backend
+          property: host

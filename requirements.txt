@@ -1,0 +1,2 @@
+# SafeRoute Saheli — Root Requirements for Cloud & Render Deployment
+-r backend/requirements.txt
