@@ -44,7 +44,7 @@ const char* BACKEND_BASE_URL  = "https://saferoute-saheli-backend.onrender.com/a
 
 // IoT Device Identity & Cryptographic Secret:
 const char* DEVICE_ID         = "SAHELI-WEARABLE-001";
-const char* DEVICE_SECRET     = "wearable_esp32_hmac_shared_secret_2026";
+const char* DEVICE_SECRET     = "wearable_secret_2026";
 const char* FIRMWARE_VERSION  = "1.0.0-ARDUINO";
 
 // =====================================================================================
@@ -64,11 +64,11 @@ const char* FIRMWARE_VERSION  = "1.0.0-ARDUINO";
 #define PIN_STATUS_LED        2     // Onboard Status LED
 
 // Detection Thresholds
-#define TOUCH_HOLD_TRIGGER_MS 1500  // 1.5 seconds continuous touch
+#define TOUCH_HOLD_TRIGGER_MS 700   // 0.7s quick hold for SOS
 #define MPU6050_ADDR          0x68
 #define FALL_ACCEL_THRESHOLD  2.8f  // 2.8 G impact
 #define STRUGGLE_GYRO_THRESH  200.0f// 200 deg/s angular velocity
-#define CLAP_PEAK_THRESHOLD   12000 // I2S amplitude threshold
+#define CLAP_PEAK_THRESHOLD   22000 // Sharp clap amplitude (prevents floating pin false triggers)
 #define CLAP_MIN_GAP_MS       180   // Min interval between claps
 #define CLAP_MAX_GAP_MS       750   // Max interval between claps
 #define CLAP_COUNT_REQUIRED   3     // 3 rapid claps for SOS
@@ -318,12 +318,19 @@ bool detectClapSpike() {
     
     int samples = bytesRead / sizeof(int16_t);
     int maxAmplitude = 0;
+    long sum = 0;
     for (int i = 0; i < samples; i++) {
         int amp = abs(sampleBuffer[i]);
+        sum += amp;
         if (amp > maxAmplitude) maxAmplitude = amp;
     }
 
-    return (maxAmplitude > CLAP_PEAK_THRESHOLD);
+    int avgAmplitude = sum / (samples > 0 ? samples : 1);
+
+    // True acoustic clap has an impulse peak:
+    // 1. Peak must be loud (> 22000)
+    // 2. Crest factor: Peak must be at least 3.5x higher than average window (rejects floating pin static!)
+    return (maxAmplitude > CLAP_PEAK_THRESHOLD && maxAmplitude > (avgAmplitude * 3.5));
 }
 
 bool updateClapPattern() {
@@ -499,8 +506,8 @@ void setup() {
     Serial.flush();
 
     // 2. Initialize TTP223 Capacitive Touch
-    pinMode(PIN_TOUCH_SENSOR, INPUT);
-    Serial.println("[Setup 2/6] TTP223 Capacitive Touch Sensor initialized on GPIO 13");
+    pinMode(PIN_TOUCH_SENSOR, INPUT_PULLDOWN);
+    Serial.println("[Setup 2/6] TTP223 Capacitive Touch Sensor initialized on GPIO 13 (INPUT_PULLDOWN)");
     Serial.flush();
 
     // 3. Initialize MPU-6050 Motion Sensor (Safe check with timeout)
@@ -542,13 +549,13 @@ void setup() {
     delay(100);
     IPAddress apIP = WiFi.softAPIP();
     Serial.println("\n--------------------------------------------------");
-    Serial.println("[WiFi AP] SoftAP Hotspot Created: 'Saheli_Smart_Band'");
-    Serial.printf ("[WiFi AP] Hotspot Direct URL:     http://%s (Password: 12345678)\n", apIP.toString().c_str());
+    Serial.println("[WiFi AP] Direct SoftAP Hotspot Active: 'Saheli_Smart_Band'");
+    Serial.printf ("[WiFi AP] SoftAP Direct URL: http://%s (Password: 12345678)\n", apIP.toString().c_str());
     Serial.println("--------------------------------------------------");
     Serial.flush();
 
     if (String(WIFI_SSID) != "YOUR_WIFI_NAME") {
-        Serial.printf("[WiFi STA] Connecting to Router: %s\n", WIFI_SSID);
+        Serial.printf("[WiFi STA] Connecting to Router / Hotspot: %s\n", WIFI_SSID);
         WiFi.begin(WIFI_SSID, WIFI_PASSWORD);
         int attempts = 0;
         while (WiFi.status() != WL_CONNECTED && attempts < 10) {
@@ -557,10 +564,15 @@ void setup() {
             attempts++;
         }
         if (WiFi.status() == WL_CONNECTED) {
-            Serial.println("\n[WiFi STA] Connected! Router IP: " + WiFi.localIP().toString());
+            Serial.println("\n==================================================");
+            Serial.println("✅ [WiFi STA] Connected! Network: " + String(WIFI_SSID));
+            Serial.println("🌐 [WiFi STA] ESP32 IP Address: " + WiFi.localIP().toString());
+            Serial.println("👉 ENTER THIS IP IN SAHELI MOBILE APP: " + WiFi.localIP().toString());
+            Serial.println("==================================================\n");
             sendCloudHeartbeat();
         } else {
             Serial.println("\n[WiFi STA] Router not found. Operating via direct SoftAP at 192.168.4.1");
+            Serial.println("👉 CONNECT PHONE TO 'Saheli_Smart_Band' & USE IP: 192.168.4.1 IN APP\n");
         }
     } else {
         Serial.println("[WiFi STA] Notice: Set WIFI_SSID & WIFI_PASSWORD to connect directly to home router/cloud.");
@@ -662,18 +674,43 @@ void loop() {
     // 2. Poll GPS Module (Non-blocking character stream)
     pollGPS();
 
-    // 3. TTP223 Touch SOS Check (1.5-second continuous press)
+    // 3. TTP223 Touch SOS Check (Quick Click & Hold SOS with Instant Feedback)
     bool touchState = (digitalRead(PIN_TOUCH_SENSOR) == HIGH);
+    static unsigned long lastTapTime = 0;
+    static int tapCount = 0;
+
     if (touchState) {
+        digitalWrite(PIN_STATUS_LED, HIGH); // Instant visual feedback when touched!
         if (!touchPressed) {
             touchPressed = true;
             touchStartTime = now;
+            Serial.println("\n[Touch] 👆 Touch Sensor Contact! (Hold 0.7s or Double-Tap for SOS)");
+            pulseHaptic(40); // Quick tactile confirmation tick
         } else if (now - touchStartTime >= TOUCH_HOLD_TRIGGER_MS) {
+            Serial.println("\n[Touch] 🚨 Long-press SOS Threshold Reached! 🚨");
             triggerEmergencySOS("TOUCH", 1.00f);
-            touchPressed = false; // Reset after trigger
+            touchPressed = false;
         }
     } else {
-        touchPressed = false;
+        digitalWrite(PIN_STATUS_LED, LOW);
+        if (touchPressed) {
+            unsigned long pressDuration = now - touchStartTime;
+            touchPressed = false;
+            if (pressDuration > 40 && pressDuration < TOUCH_HOLD_TRIGGER_MS) {
+                tapCount++;
+                if (tapCount == 1) {
+                    lastTapTime = now;
+                    Serial.println("[Touch] Single Click / Tap registered.");
+                } else if (tapCount >= 2 && (now - lastTapTime < 600)) {
+                    Serial.println("\n[Touch] 🚨 Double-Click SOS Triggered! 🚨");
+                    triggerEmergencySOS("TOUCH_DOUBLE_TAP", 1.00f);
+                    tapCount = 0;
+                }
+            }
+        }
+        if (tapCount > 0 && (now - lastTapTime >= 600)) {
+            tapCount = 0;
+        }
     }
 
     // 4. MPU-6050 Motion Anomaly Check (Only if sensor is physically connected)
