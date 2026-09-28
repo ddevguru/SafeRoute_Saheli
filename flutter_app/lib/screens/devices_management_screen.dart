@@ -1047,8 +1047,8 @@ class _DevicesManagementScreenState extends State<DevicesManagementScreen> {
                   ),
                   icon: const Icon(Icons.fullscreen_rounded, size: 18),
                   label: Text(
-                    isLive ? 'Open Live Stream' : 'Camera Offline',
-                    style: const TextStyle(fontWeight: FontWeight.bold, fontSize: 13),
+                    isLive ? 'Live Stream' : 'Camera Off',
+                    style: const TextStyle(fontWeight: FontWeight.bold, fontSize: 12),
                   ),
                   onPressed: isLive
                       ? () => Navigator.pushNamed(context, AppRoutes.liveCamera)
@@ -1062,23 +1062,24 @@ class _DevicesManagementScreenState extends State<DevicesManagementScreen> {
                         },
                 ),
               ),
-              const SizedBox(width: 10),
+              const SizedBox(width: 8),
               ElevatedButton.icon(
                 style: ElevatedButton.styleFrom(
                   backgroundColor: isLive ? AppColors.primary : AppColors.cardBackground,
                   foregroundColor: isLive ? Colors.white : AppColors.textMuted,
                   shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(10)),
-                  padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 12),
+                  padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 12),
                 ),
                 icon: const Icon(Icons.camera_alt_rounded, size: 16),
-                label: const Text('Burst Snap', style: TextStyle(fontSize: 12, fontWeight: FontWeight.bold)),
+                label: const Text('Burst', style: TextStyle(fontSize: 12, fontWeight: FontWeight.bold)),
                 onPressed: isLive ? () => _triggerBurst(device.deviceId) : null,
               ),
-              const SizedBox(width: 8),
+              const SizedBox(width: 6),
               IconButton.filled(
                 style: IconButton.styleFrom(
                   backgroundColor: _isTorchOn ? AppColors.secondary : AppColors.cardBackground,
                   foregroundColor: _isTorchOn ? Colors.black : AppColors.textPrimary,
+                  padding: const EdgeInsets.all(8),
                 ),
                 icon: Icon(_isTorchOn ? Icons.flash_on_rounded : Icons.flash_off_rounded, size: 18),
                 tooltip: 'Flashlight Deterrent Toggle',
@@ -1115,11 +1116,23 @@ class _DevicesManagementScreenState extends State<DevicesManagementScreen> {
           children: [
             Icon(icon, size: 14, color: iconColor),
             const SizedBox(width: 4),
-            Text(title, style: const TextStyle(fontSize: 11, color: AppColors.textSecondary)),
+            Expanded(
+              child: Text(
+                title,
+                maxLines: 1,
+                overflow: TextOverflow.ellipsis,
+                style: const TextStyle(fontSize: 11, color: AppColors.textSecondary),
+              ),
+            ),
           ],
         ),
         const SizedBox(height: 3),
-        Text(value, style: const TextStyle(fontWeight: FontWeight.w700, fontSize: 13)),
+        Text(
+          value,
+          maxLines: 1,
+          overflow: TextOverflow.ellipsis,
+          style: const TextStyle(fontWeight: FontWeight.w700, fontSize: 12),
+        ),
       ],
     );
   }
@@ -1128,13 +1141,23 @@ class _DevicesManagementScreenState extends State<DevicesManagementScreen> {
     return Row(
       mainAxisAlignment: MainAxisAlignment.spaceBetween,
       children: [
-        Row(
-          children: [
-            Icon(icon, size: 14, color: AppColors.primary),
-            const SizedBox(width: 6),
-            Text(label, style: const TextStyle(fontSize: 12, color: AppColors.textSecondary)),
-          ],
+        Expanded(
+          child: Row(
+            children: [
+              Icon(icon, size: 14, color: AppColors.primary),
+              const SizedBox(width: 6),
+              Expanded(
+                child: Text(
+                  label,
+                  maxLines: 1,
+                  overflow: TextOverflow.ellipsis,
+                  style: const TextStyle(fontSize: 12, color: AppColors.textSecondary),
+                ),
+              ),
+            ],
+          ),
         ),
+        const SizedBox(width: 8),
         Text(
           status,
           style: const TextStyle(fontSize: 11, fontWeight: FontWeight.w600, color: AppColors.textPrimary),

@@ -155,7 +155,7 @@ class _LoginScreenState extends State<LoginScreen> with SingleTickerProviderStat
 
                   // Tab Views
                   SizedBox(
-                    height: 380,
+                    height: 420,
                     child: TabBarView(
                       controller: _tabController,
                       children: [

@@ -126,27 +126,34 @@ class _HomeDashboardScreenState extends State<HomeDashboardScreen> {
                     return Row(
                       mainAxisAlignment: MainAxisAlignment.spaceBetween,
                       children: [
-                        Column(
-                          crossAxisAlignment: CrossAxisAlignment.start,
-                          children: [
-                            Text(
-                              'Good Morning, $userName',
-                              style: const TextStyle(
-                                fontSize: 22,
-                                fontWeight: FontWeight.w700,
-                                color: AppColors.primary,
+                        Expanded(
+                          child: Column(
+                            crossAxisAlignment: CrossAxisAlignment.start,
+                            children: [
+                              Text(
+                                'Good Morning, $userName',
+                                style: const TextStyle(
+                                  fontSize: 22,
+                                  fontWeight: FontWeight.w700,
+                                  color: AppColors.primary,
+                                ),
+                                maxLines: 1,
+                                overflow: TextOverflow.ellipsis,
                               ),
-                            ),
-                            const SizedBox(height: 2),
-                            const Text(
-                              'Stay connected. Your safety circle is active.',
-                              style: TextStyle(
-                                fontSize: 13,
-                                color: AppColors.textSecondary,
+                              const SizedBox(height: 2),
+                              const Text(
+                                'Stay connected. Your safety circle is active.',
+                                style: TextStyle(
+                                  fontSize: 13,
+                                  color: AppColors.textSecondary,
+                                ),
+                                maxLines: 1,
+                                overflow: TextOverflow.ellipsis,
                               ),
-                            ),
-                          ],
+                            ],
+                          ),
                         ),
+                        const SizedBox(width: 8),
                         InkWell(
                           borderRadius: BorderRadius.circular(20),
                           onTap: () => Navigator.pushNamed(context, AppRoutes.profile),
@@ -208,10 +215,11 @@ class _HomeDashboardScreenState extends State<HomeDashboardScreen> {
                 // 8 Action Grid Tiles
                 GridView.count(
                   crossAxisCount: 3,
+                  childAspectRatio: 0.84,
                   shrinkWrap: true,
                   physics: const NeverScrollableScrollPhysics(),
-                  mainAxisSpacing: 12,
-                  crossAxisSpacing: 12,
+                  mainAxisSpacing: 10,
+                  crossAxisSpacing: 10,
                   children: [
                     QuickActionTile(
                       title: 'Safe Route',

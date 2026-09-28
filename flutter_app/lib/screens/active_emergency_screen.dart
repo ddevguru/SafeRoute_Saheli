@@ -48,6 +48,8 @@ class _ActiveEmergencyScreenState extends State<ActiveEmergencyScreen> with Sing
 
   Future<void> _initAudioAlarm() async {
     _audioPlayer = AudioPlayer();
+    
+    // 1. Configure audio routing safely without blocking playback on failure
     try {
       await _audioPlayer.setAudioContext(
         AudioContext(
@@ -66,27 +68,58 @@ class _ActiveEmergencyScreenState extends State<ActiveEmergencyScreen> with Sing
           ),
         ),
       );
+    } catch (e) {
+      debugPrint('[EmergencyAudio] AudioContext notice (proceeding to play): $e');
+    }
+
+    // 2. Configure volume and loop mode
+    try {
       await _audioPlayer.setReleaseMode(ReleaseMode.loop);
       await _audioPlayer.setVolume(1.0);
-      await _audioPlayer.play(AssetSource('sounds/emergency_siren.wav'));
-      if (mounted) {
-        setState(() {
-          _isSirenMuted = false;
-        });
-      }
     } catch (e) {
-      debugPrint('[EmergencyAudio] Siren playback notice: $e');
+      debugPrint('[EmergencyAudio] Volume setup notice: $e');
+    }
+
+    // 3. Play emergency siren sound with fallback paths
+    bool played = false;
+    try {
+      await _audioPlayer.play(AssetSource('sounds/emergency_siren.wav'));
+      played = true;
+      debugPrint('[EmergencyAudio] Playing siren from sounds/emergency_siren.wav');
+    } catch (e) {
+      debugPrint('[EmergencyAudio] sounds/ path failed: $e, trying assets/sounds/...');
+      try {
+        await _audioPlayer.play(AssetSource('assets/sounds/emergency_siren.wav'));
+        played = true;
+        debugPrint('[EmergencyAudio] Playing siren from assets/sounds/emergency_siren.wav');
+      } catch (e2) {
+        debugPrint('[EmergencyAudio] Siren playback fallback error: $e2');
+      }
+    }
+
+    if (mounted) {
+      setState(() {
+        _isSirenMuted = !played;
+      });
     }
   }
 
   void _toggleSirenMute() async {
     if (_isSirenMuted) {
-      await _audioPlayer.setVolume(1.0);
-      await _audioPlayer.resume();
+      try {
+        await _audioPlayer.setVolume(1.0);
+        await _audioPlayer.resume();
+      } catch (e) {
+        try {
+          await _audioPlayer.play(AssetSource('sounds/emergency_siren.wav'));
+        } catch (_) {}
+      }
       setState(() => _isSirenMuted = false);
     } else {
-      await _audioPlayer.setVolume(0.0);
-      await _audioPlayer.pause();
+      try {
+        await _audioPlayer.setVolume(0.0);
+        await _audioPlayer.pause();
+      } catch (_) {}
       setState(() => _isSirenMuted = true);
     }
   }
@@ -457,6 +490,7 @@ class _ActiveEmergencyScreenState extends State<ActiveEmergencyScreen> with Sing
                           name: place.name,
                           category: place.category,
                           distanceMeters: place.distanceMeters,
+                          isDarkTheme: true,
                           onNavigate: () => _launchNavigation(place.latitude, place.longitude, place.name),
                           onCall: () => _launchCall(place.phone),
                         ),
@@ -466,6 +500,7 @@ class _ActiveEmergencyScreenState extends State<ActiveEmergencyScreen> with Sing
                         name: 'National Emergency Response (112)',
                         category: 'POLICE',
                         distanceMeters: 100,
+                        isDarkTheme: true,
                         onNavigate: () => _launchNavigation(28.6139, 77.2090, 'Police Control Room 112'),
                         onCall: () => _launchCall('112'),
                       ),
@@ -473,6 +508,7 @@ class _ActiveEmergencyScreenState extends State<ActiveEmergencyScreen> with Sing
                         name: 'National Women Safety Helpline (1091)',
                         category: 'POLICE',
                         distanceMeters: 250,
+                        isDarkTheme: true,
                         onNavigate: () => _launchNavigation(28.6139, 77.2090, 'Women Police Helpline'),
                         onCall: () => _launchCall('1091'),
                       ),
@@ -480,6 +516,7 @@ class _ActiveEmergencyScreenState extends State<ActiveEmergencyScreen> with Sing
                         name: 'Central Ambulance & Medical Emergency (108)',
                         category: 'HOSPITAL',
                         distanceMeters: 400,
+                        isDarkTheme: true,
                         onNavigate: () => _launchNavigation(28.6139, 77.2090, 'Emergency Hospital Ambulance'),
                         onCall: () => _launchCall('108'),
                       ),
