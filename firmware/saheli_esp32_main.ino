@@ -555,11 +555,13 @@ void setup() {
     Serial.flush();
 
     if (String(WIFI_SSID) != "YOUR_WIFI_NAME") {
-        Serial.printf("[WiFi STA] Connecting to Router / Hotspot: %s\n", WIFI_SSID);
+        Serial.printf("[WiFi STA] Connecting to Router / Hotspot: '%s'\n", WIFI_SSID);
+        WiFi.disconnect(true);
+        delay(100);
         WiFi.begin(WIFI_SSID, WIFI_PASSWORD);
         int attempts = 0;
-        while (WiFi.status() != WL_CONNECTED && attempts < 10) {
-            delay(300);
+        while (WiFi.status() != WL_CONNECTED && attempts < 25) {
+            delay(350);
             Serial.print(".");
             attempts++;
         }
@@ -571,8 +573,9 @@ void setup() {
             Serial.println("==================================================\n");
             sendCloudHeartbeat();
         } else {
-            Serial.println("\n[WiFi STA] Router not found. Operating via direct SoftAP at 192.168.4.1");
-            Serial.println("👉 CONNECT PHONE TO 'Saheli_Smart_Band' & USE IP: 192.168.4.1 IN APP\n");
+            Serial.println("\n[WiFi STA] Router/Hotspot not connected yet.");
+            Serial.println("👉 Direct SoftAP is Active: Connect Phone to 'Saheli_Smart_Band' (Pass: 12345678)");
+            Serial.println("👉 In Saheli App, use IP: 192.168.4.1\n");
         }
     } else {
         Serial.println("[WiFi STA] Notice: Set WIFI_SSID & WIFI_PASSWORD to connect directly to home router/cloud.");
@@ -664,9 +667,11 @@ void loop() {
     // 1. Maintain WiFi Router Connection (if configured)
     if (String(WIFI_SSID) != "YOUR_WIFI_NAME" && WiFi.status() != WL_CONNECTED) {
         static unsigned long lastReconnect = 0;
-        if (now - lastReconnect > 20000) {
+        if (now - lastReconnect > 25000) {
             lastReconnect = now;
             Serial.println("[WiFi STA] Reconnecting to router...");
+            WiFi.disconnect(false);
+            delay(100);
             WiFi.begin(WIFI_SSID, WIFI_PASSWORD);
         }
     }
