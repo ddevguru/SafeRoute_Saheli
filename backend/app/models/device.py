@@ -20,7 +20,6 @@ class Device(db.Model):
     battery_voltage = db.Column(db.Float, default=4.20)
     wifi_rssi = db.Column(db.Integer, default=-60)
     camera_health = db.Column(db.String(50), default='IDLE')
-    ip_address = db.Column(db.String(64), nullable=True)
     created_at = db.Column(db.DateTime, default=datetime.utcnow)
     updated_at = db.Column(db.DateTime, default=datetime.utcnow, onupdate=datetime.utcnow)
 
@@ -45,6 +44,15 @@ class Device(db.Model):
                 is_live = True
 
         calculated_status = 'ONLINE' if is_live else 'OFFLINE'
+        
+        # Safe runtime IP lookup without database schema migration requirement
+        runtime_ip = None
+        try:
+            from backend.app.device.routes import get_device_ip
+            runtime_ip = get_device_ip(self.device_id)
+        except Exception:
+            pass
+
         return {
             'id': self.id,
             'device_id': self.device_id,
@@ -54,7 +62,7 @@ class Device(db.Model):
             'is_paired': self.is_paired,
             'status': calculated_status,
             'is_online': is_live,
-            'ip_address': self.ip_address,
+            'ip_address': runtime_ip,
             'last_heartbeat': self.last_heartbeat.isoformat() if self.last_heartbeat else None,
             'firmware_version': self.firmware_version,
             'battery_percent': self.battery_percent if is_live else 0,

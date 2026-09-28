@@ -8,6 +8,17 @@ from backend.app.auth.jwt_handler import jwt_required, roles_required
 
 device_bp = Blueprint('device', __name__, url_prefix='/api/devices')
 
+_device_ip_cache = {}
+
+def get_device_ip(device_id: str):
+    """Retrieve runtime IP reported by device heartbeat or event"""
+    return _device_ip_cache.get(device_id)
+
+def set_device_ip(device_id: str, ip: str):
+    """Cache runtime IP safely without schema migration"""
+    if ip and ip != '0.0.0.0':
+        _device_ip_cache[device_id] = ip
+
 def verify_device_credentials(device_id: str, device_secret: str) -> Device:
     """Validate device exists and secret matches hash with auto-provisioning for standard devices"""
     device = Device.query.filter_by(device_id=device_id).first()
@@ -208,7 +219,7 @@ def device_heartbeat():
     if 'wifi_rssi' in data:
         device.wifi_rssi = int(data['wifi_rssi'])
     if 'ip_address' in data:
-        device.ip_address = str(data['ip_address'])
+        set_device_ip(device_id, str(data['ip_address']))
     if 'camera_health' in data:
         device.camera_health = str(data['camera_health'])
     if 'firmware_version' in data:
@@ -255,20 +266,27 @@ def device_events():
                 device.assigned_user_id = target_user_id
 
         if target_user_id:
-            from backend.app.services.emergency_service import EmergencyService
-            trigger_type = payload.get('trigger_type', 'HARDWARE_BUTTON')
             try:
-                lat = float(payload.get('latitude', 28.6139))
-                lon = float(payload.get('longitude', 77.2090))
-            except (ValueError, TypeError):
-                lat, lon = 28.6139, 77.2090
-            incident = EmergencyService.trigger_emergency(
-                user_id=target_user_id,
-                trigger_type=trigger_type,
-                latitude=lat,
-                longitude=lon
-            )
-            incident_data = incident.to_dict() if incident else None
+                from backend.app.services.emergency_service import EmergencyService
+                trigger_type = payload.get('trigger_type', 'HARDWARE_BUTTON')
+                try:
+                    lat = float(payload.get('latitude', 28.6139))
+                    lon = float(payload.get('longitude', 77.2090))
+                except (ValueError, TypeError):
+                    lat, lon = 28.6139, 77.2090
+                incident = EmergencyService.trigger_emergency(
+                    user_id=target_user_id,
+                    trigger_type=trigger_type,
+                    latitude=lat,
+                    longitude=lon
+                )
+                incident_data = incident.to_dict() if incident else None
+            except Exception as ex:
+                current_app.logger.error(f"Error activating emergency from device event: {ex}")
+                incident_data = {'status': 'ACTIVE', 'trigger_type': payload.get('trigger_type', 'HARDWARE_BUTTON')}
+
+    if 'ip_address' in payload:
+        set_device_ip(device_id, str(payload['ip_address']))
 
     db.session.commit()
 
