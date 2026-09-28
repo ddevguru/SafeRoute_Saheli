@@ -56,6 +56,15 @@ class _DevicesManagementScreenState extends State<DevicesManagementScreen> {
     setState(() {
       _devices = list;
       _isLoading = false;
+      for (final d in list) {
+        if (d.isWearable && d.ipAddress != null && d.ipAddress!.isNotEmpty && d.ipAddress != '0.0.0.0') {
+          _wearableIpController.text = d.ipAddress!;
+          _localDeviceService.saveIps(
+            wearableIp: d.ipAddress!,
+            cameraIp: _cameraIpController.text,
+          );
+        }
+      }
     });
   }
 
@@ -81,10 +90,10 @@ class _DevicesManagementScreenState extends State<DevicesManagementScreen> {
       );
     } else {
       ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(
-          content: Text('❌ Device not responding. Ensure ESP32 is powered ON and on the same Wi-Fi network.'),
+        SnackBar(
+          content: Text('❌ Cannot reach $wIp.\nTip: If phone is connected to "Saheli_Smart_Band", tap "Hotspot IP" (192.168.4.1).'),
           backgroundColor: AppColors.emergency,
-          duration: Duration(seconds: 4),
+          duration: const Duration(seconds: 4),
         ),
       );
     }

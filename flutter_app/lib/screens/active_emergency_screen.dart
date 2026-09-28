@@ -49,6 +49,23 @@ class _ActiveEmergencyScreenState extends State<ActiveEmergencyScreen> with Sing
   Future<void> _initAudioAlarm() async {
     _audioPlayer = AudioPlayer();
     try {
+      await _audioPlayer.setAudioContext(
+        AudioContext(
+          android: const AudioContextAndroid(
+            isSpeakerphoneOn: true,
+            stayAwake: true,
+            contentType: AndroidContentType.sonification,
+            usageType: AndroidUsageType.alarm,
+            audioFocus: AndroidAudioFocus.gainTransientExclusive,
+          ),
+          iOS: AudioContextIOS(
+            category: AVAudioSessionCategory.playback,
+            options: const {
+              AVAudioSessionOptions.defaultToSpeaker,
+            },
+          ),
+        ),
+      );
       await _audioPlayer.setReleaseMode(ReleaseMode.loop);
       await _audioPlayer.setVolume(1.0);
       await _audioPlayer.play(AssetSource('sounds/emergency_siren.wav'));

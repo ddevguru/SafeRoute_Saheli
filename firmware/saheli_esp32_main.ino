@@ -64,14 +64,14 @@ const char* FIRMWARE_VERSION  = "1.0.0-ARDUINO";
 #define PIN_STATUS_LED        2     // Onboard Status LED
 
 // Detection Thresholds
-#define TOUCH_HOLD_TRIGGER_MS 700   // 0.7s quick hold for SOS
+#define TOUCH_HOLD_TRIGGER_MS 500   // 0.5s quick hold for SOS
 #define MPU6050_ADDR          0x68
 #define FALL_ACCEL_THRESHOLD  2.8f  // 2.8 G impact
 #define STRUGGLE_GYRO_THRESH  200.0f// 200 deg/s angular velocity
-#define CLAP_PEAK_THRESHOLD   22000 // Sharp clap amplitude (prevents floating pin false triggers)
-#define CLAP_MIN_GAP_MS       180   // Min interval between claps
-#define CLAP_MAX_GAP_MS       750   // Max interval between claps
-#define CLAP_COUNT_REQUIRED   3     // 3 rapid claps for SOS
+#define CLAP_PEAK_THRESHOLD   8000  // Sensitive impulse threshold (crest factor protects against static)
+#define CLAP_MIN_GAP_MS       140   // Min interval between claps (ms)
+#define CLAP_MAX_GAP_MS       1200  // Max interval between claps (ms, comfortable human clapping window)
+#define CLAP_COUNT_REQUIRED   2     // 2 rapid claps (Double-Clap SOS: Clap-Clap)
 
 // Telemetry Timing Intervals
 #define INTERVAL_NORMAL_GPS   25000 // 25 seconds normal GPS push
@@ -101,6 +101,7 @@ unsigned long lastHeartbeatTime  = 0;
 unsigned long lastGpsPushTime    = 0;
 unsigned long touchStartTime     = 0;
 bool touchPressed         = false;
+int  touchIdleBaseline    = LOW; // Dynamic baseline calibration for Active-HIGH/Active-LOW TTP223
 
 // Clap Detector State Machine
 int clapCount             = 0;
@@ -328,9 +329,9 @@ bool detectClapSpike() {
     int avgAmplitude = sum / (samples > 0 ? samples : 1);
 
     // True acoustic clap has an impulse peak:
-    // 1. Peak must be loud (> 22000)
-    // 2. Crest factor: Peak must be at least 3.5x higher than average window (rejects floating pin static!)
-    return (maxAmplitude > CLAP_PEAK_THRESHOLD && maxAmplitude > (avgAmplitude * 3.5));
+    // 1. Peak must be loud (> 8000)
+    // 2. Crest factor: Peak must be at least 2.8x higher than average window (rejects floating pin static!)
+    return (maxAmplitude > CLAP_PEAK_THRESHOLD && maxAmplitude > (avgAmplitude * 2.8));
 }
 
 bool updateClapPattern() {
@@ -339,16 +340,16 @@ bool updateClapPattern() {
         if (clapCount == 0) {
             clapCount = 1;
             lastClapTime = now;
-            Serial.println("[Clap] Spike #1 detected.");
+            Serial.println("[Clap] 👏 Spike #1 detected! (Clap once more within 1.2s for SOS)");
         } else {
             unsigned long gap = now - lastClapTime;
             if (gap >= CLAP_MIN_GAP_MS && gap <= CLAP_MAX_GAP_MS) {
                 clapCount++;
                 lastClapTime = now;
-                Serial.printf("[Clap] Spike #%d detected! (gap: %lu ms)\n", clapCount, gap);
+                Serial.printf("[Clap] 👏 Spike #%d detected! (gap: %lu ms)\n", clapCount, gap);
                 if (clapCount >= CLAP_COUNT_REQUIRED) {
                     clapCount = 0;
-                    return true; // 3-Clap SOS Trigger!
+                    return true; // 2-Clap SOS Trigger!
                 }
             } else if (gap > CLAP_MAX_GAP_MS) {
                 clapCount = 1;
@@ -388,6 +389,7 @@ void sendCloudHeartbeat() {
     payload += "\"battery_percent\":" + String(pct) + ",";
     payload += "\"battery_voltage\":" + String(v, 2) + ",";
     payload += "\"wifi_rssi\":" + String(WiFi.RSSI()) + ",";
+    payload += "\"ip_address\":\"" + WiFi.localIP().toString() + "\",";
     payload += "\"firmware_version\":\"" + String(FIRMWARE_VERSION) + "\"";
     payload += "}";
 
@@ -432,7 +434,8 @@ void triggerEmergencySOS(String triggerSource, float confidence) {
     payload += "\"latitude\":" + String(currentGPS.latitude, 6) + ",";
     payload += "\"longitude\":" + String(currentGPS.longitude, 6) + ",";
     payload += "\"speed_kmph\":" + String(currentGPS.speedKmph, 1) + ",";
-    payload += "\"battery_percent\":" + String(pct);
+    payload += "\"battery_percent\":" + String(pct) + ",";
+    payload += "\"ip_address\":\"" + WiFi.localIP().toString() + "\"";
     payload += "}}";
 
     int code = http.POST(payload);
@@ -472,10 +475,10 @@ void sendGPSTelemetry() {
 
 // Core 0: High-Frequency Audio DSP (Spawned only if physical I2S microphone is detected)
 void audioCoreTask(void* parameter) {
-    Serial.println("[Core 0] Audio Clap Listening Task Active.");
+    Serial.println("[Core 0] Audio Clap Listening Task Active (Double-Clap SOS Mode).");
     while (true) {
         if (hasI2SMic && updateClapPattern()) {
-            Serial.println("[Core 0] >>> 3-CLAP EMERGENCY PATTERN DETECTED! <<<");
+            Serial.println("\n[Core 0] >>> 👏 👏 2-CLAP EMERGENCY PATTERN DETECTED! <<<");
             triggerEmergencySOS("CLAP", 0.95f);
         }
         vTaskDelay(pdMS_TO_TICKS(5));
@@ -505,9 +508,12 @@ void setup() {
     Serial.println("[Setup 1/6] Actuators initialized (Buzzer: GPIO 14, Vibration: GPIO 15, LED: GPIO 2)");
     Serial.flush();
 
-    // 2. Initialize TTP223 Capacitive Touch
-    pinMode(PIN_TOUCH_SENSOR, INPUT_PULLDOWN);
-    Serial.println("[Setup 2/6] TTP223 Capacitive Touch Sensor initialized on GPIO 13 (INPUT_PULLDOWN)");
+    // 2. Initialize TTP223 Capacitive Touch with Auto-Polarity Baseline Calibration
+    pinMode(PIN_TOUCH_SENSOR, INPUT);
+    delay(150); // Allow TTP223 power-on self-calibration cycle
+    touchIdleBaseline = digitalRead(PIN_TOUCH_SENSOR);
+    Serial.printf("[Setup 2/6] TTP223 Capacitive Touch Sensor initialized on GPIO 13 (Idle baseline: %s)\n",
+                  touchIdleBaseline == HIGH ? "HIGH (Active LOW module)" : "LOW (Active HIGH module)");
     Serial.flush();
 
     // 3. Initialize MPU-6050 Motion Sensor (Safe check with timeout)
@@ -689,8 +695,9 @@ void loop() {
     // 2. Poll GPS Module (Non-blocking character stream)
     pollGPS();
 
-    // 3. TTP223 Touch SOS Check (Quick Click & Hold SOS with Instant Feedback)
-    bool touchState = (digitalRead(PIN_TOUCH_SENSOR) == HIGH);
+    // 3. TTP223 Touch SOS Check (Instant Visual/Tactile Feedback + Hold 0.5s or Double-Tap for SOS)
+    int currentTouchPin = digitalRead(PIN_TOUCH_SENSOR);
+    bool touchState = (currentTouchPin != touchIdleBaseline);
     static unsigned long lastTapTime = 0;
     static int tapCount = 0;
 
@@ -699,10 +706,10 @@ void loop() {
         if (!touchPressed) {
             touchPressed = true;
             touchStartTime = now;
-            Serial.println("\n[Touch] 👆 Touch Sensor Contact! (Hold 0.7s or Double-Tap for SOS)");
-            pulseHaptic(40); // Quick tactile confirmation tick
+            Serial.println("\n[Touch] 👆 Touch Sensor Contact! (Hold 0.5s or Double-Tap for SOS)");
+            pulseHaptic(50); // Tactile confirmation tick
         } else if (now - touchStartTime >= TOUCH_HOLD_TRIGGER_MS) {
-            Serial.println("\n[Touch] 🚨 Long-press SOS Threshold Reached! 🚨");
+            Serial.println("\n[Touch] 🚨 Touch SOS Threshold Reached (0.5s Hold)! 🚨");
             triggerEmergencySOS("TOUCH", 1.00f);
             touchPressed = false;
         }
@@ -716,14 +723,14 @@ void loop() {
                 if (tapCount == 1) {
                     lastTapTime = now;
                     Serial.println("[Touch] Single Click / Tap registered.");
-                } else if (tapCount >= 2 && (now - lastTapTime < 600)) {
-                    Serial.println("\n[Touch] 🚨 Double-Click SOS Triggered! 🚨");
+                } else if (tapCount >= 2 && (now - lastTapTime < 700)) {
+                    Serial.println("\n[Touch] 🚨 Double-Tap Touch SOS Triggered! 🚨");
                     triggerEmergencySOS("TOUCH_DOUBLE_TAP", 1.00f);
                     tapCount = 0;
                 }
             }
         }
-        if (tapCount > 0 && (now - lastTapTime >= 600)) {
+        if (tapCount > 0 && (now - lastTapTime >= 700)) {
             tapCount = 0;
         }
     }

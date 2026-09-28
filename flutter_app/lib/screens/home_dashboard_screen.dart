@@ -1,3 +1,4 @@
+import 'dart:async';
 import 'package:flutter/material.dart';
 import 'package:flutter_bloc/flutter_bloc.dart';
 import '../blocs/auth_bloc.dart';
@@ -17,12 +18,26 @@ class HomeDashboardScreen extends StatefulWidget {
 }
 
 class _HomeDashboardScreenState extends State<HomeDashboardScreen> {
+  Timer? _emergencyPollTimer;
+
   @override
   void initState() {
     super.initState();
     LocalDeviceService().init();
-    // Check if an emergency was already active
+    // Check if an emergency was already active immediately
     context.read<EmergencyBloc>().add(CheckActiveEmergencyEvent());
+    // Auto-poll cloud backend every 3.5 seconds to detect any emergency triggered by physical wearable
+    _emergencyPollTimer = Timer.periodic(const Duration(milliseconds: 3500), (_) {
+      if (mounted) {
+        context.read<EmergencyBloc>().add(CheckActiveEmergencyEvent());
+      }
+    });
+  }
+
+  @override
+  void dispose() {
+    _emergencyPollTimer?.cancel();
+    super.dispose();
   }
 
   void _onTriggerEmergency() {

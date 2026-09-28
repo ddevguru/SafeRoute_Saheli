@@ -16,6 +16,7 @@ class DeviceModel {
   final double? longitude;
   final int? heartRateBpm;
   final int? spo2;
+  final String? ipAddress;
   final Map<String, dynamic> sensors;
 
   DeviceModel({
@@ -36,6 +37,7 @@ class DeviceModel {
     this.longitude,
     this.heartRateBpm,
     this.spo2,
+    this.ipAddress,
     this.sensors = const {},
   });
 
@@ -62,6 +64,7 @@ class DeviceModel {
       longitude: (json['longitude'] as num?)?.toDouble(),
       heartRateBpm: json['heart_rate_bpm'],
       spo2: json['spo2'],
+      ipAddress: json['ip_address'],
       sensors: json['sensors'] != null ? Map<String, dynamic>.from(json['sensors']) : {},
     );
   }
