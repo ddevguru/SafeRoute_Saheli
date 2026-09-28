@@ -102,11 +102,27 @@ def create_app(config_name: str = None) -> Flask:
         response.headers['Referrer-Policy'] = 'strict-origin-when-cross-origin'
         return response
 
+    @app.errorhandler(500)
+    def handle_500(e):
+        import traceback
+        return jsonify({
+            'success': False,
+            'error': 'Internal Server Error',
+            'details': str(e),
+            'traceback': traceback.format_exc()
+        }), 500
 
     # Automatic Table Creation & Benchmark Seeding
     with app.app_context():
         import backend.app.models  # Load all models
         db.create_all()
+
+        # Self-healing PostgreSQL schema compatibility
+        try:
+            db.session.execute(db.text("ALTER TABLE devices ADD COLUMN IF NOT EXISTS ip_address VARCHAR(64)"))
+            db.session.commit()
+        except Exception:
+            db.session.rollback()
 
         # Seed initial safe places if empty
         from backend.app.models.routing import SafePlace

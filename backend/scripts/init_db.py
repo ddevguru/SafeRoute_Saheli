@@ -25,6 +25,11 @@ def init_database():
         
         # 1. Create all tables
         db.create_all()
+        try:
+            db.session.execute(db.text("ALTER TABLE devices ADD COLUMN IF NOT EXISTS ip_address VARCHAR(64)"))
+            db.session.commit()
+        except Exception:
+            db.session.rollback()
         print("[+] All database tables created successfully.")
 
         # 2. Seed Superadmin Account if not exists

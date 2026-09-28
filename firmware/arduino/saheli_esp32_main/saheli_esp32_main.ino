@@ -311,7 +311,10 @@ bool initI2SMicrophone() {
     return i2sMic->begin(I2S_MODE_STD, 16000, I2S_DATA_BIT_WIDTH_16BIT, I2S_SLOT_MODE_MONO, I2S_STD_SLOT_LEFT);
 }
 
-bool detectClapSpike() {
+int currentAudioMaxAmp = 0;
+int currentAudioAvgAmp = 0;
+
+bool readAudioBuffer() {
     if (i2sMic == nullptr) return false;
     int16_t sampleBuffer[128];
     size_t bytesRead = i2sMic->readBytes((char*)sampleBuffer, sizeof(sampleBuffer));
@@ -326,12 +329,16 @@ bool detectClapSpike() {
         if (amp > maxAmplitude) maxAmplitude = amp;
     }
 
-    int avgAmplitude = sum / (samples > 0 ? samples : 1);
+    currentAudioMaxAmp = maxAmplitude;
+    currentAudioAvgAmp = sum / (samples > 0 ? samples : 1);
+    return true;
+}
 
+bool detectClapSpike() {
     // True acoustic clap has an impulse peak:
     // 1. Peak must be loud (> 8000)
-    // 2. Crest factor: Peak must be at least 2.8x higher than average window (rejects floating pin static!)
-    return (maxAmplitude > CLAP_PEAK_THRESHOLD && maxAmplitude > (avgAmplitude * 2.8));
+    // 2. Crest factor: Peak must be at least 3.0x higher than average window (rejects floating pin static!)
+    return (currentAudioMaxAmp > CLAP_PEAK_THRESHOLD && currentAudioMaxAmp > (currentAudioAvgAmp * 3.0));
 }
 
 bool updateClapPattern() {
@@ -340,13 +347,13 @@ bool updateClapPattern() {
         if (clapCount == 0) {
             clapCount = 1;
             lastClapTime = now;
-            Serial.println("[Clap] 👏 Spike #1 detected! (Clap once more within 1.2s for SOS)");
+            Serial.printf("[Clap] 👏 Spike #1 detected! (Amp: %d) Clap once more within 1.2s for SOS\n", currentAudioMaxAmp);
         } else {
             unsigned long gap = now - lastClapTime;
             if (gap >= CLAP_MIN_GAP_MS && gap <= CLAP_MAX_GAP_MS) {
                 clapCount++;
                 lastClapTime = now;
-                Serial.printf("[Clap] 👏 Spike #%d detected! (gap: %lu ms)\n", clapCount, gap);
+                Serial.printf("[Clap] 👏 Spike #%d detected! (gap: %lu ms, Amp: %d)\n", clapCount, gap, currentAudioMaxAmp);
                 if (clapCount >= CLAP_COUNT_REQUIRED) {
                     clapCount = 0;
                     return true; // 2-Clap SOS Trigger!
@@ -354,14 +361,43 @@ bool updateClapPattern() {
             } else if (gap > CLAP_MAX_GAP_MS) {
                 clapCount = 1;
                 lastClapTime = now;
-                Serial.println("[Clap] Resetting pattern. Spike #1 started.");
+                Serial.printf("[Clap] Resetting pattern. Spike #1 started (Amp: %d)\n", currentAudioMaxAmp);
             }
         }
-        delay(80); // Debounce acoustic decay
+        delay(100); // Debounce acoustic decay
     }
 
     if (clapCount > 0 && (now - lastClapTime > CLAP_MAX_GAP_MS)) {
         clapCount = 0;
+    }
+    return false;
+}
+
+// Voice Distress & Scream Detection ("HELP!" / "BACHAO!" / Loud Screaming)
+bool detectVoiceDistress() {
+    static unsigned long shoutStartTime = 0;
+    static bool isShouting = false;
+    unsigned long now = millis();
+
+    // Loud voice shout / distress scream threshold (> 4200 sustained amplitude)
+    if (currentAudioMaxAmp > 4200) {
+        if (!isShouting) {
+            isShouting = true;
+            shoutStartTime = now;
+            Serial.printf("[Voice] 🗣️ Loud sound heard! (Amp: %d)... keep shouting 'HELP!' for 0.35s!\n", currentAudioMaxAmp);
+        } else {
+            unsigned long duration = now - shoutStartTime;
+            if (duration >= 350 && duration <= 2200) {
+                // Sustained loud acoustic energy for 350ms - 2.2s (human scream or HELP shout)
+                isShouting = false;
+                shoutStartTime = 0;
+                return true;
+            }
+        }
+    } else {
+        if (isShouting && (now - shoutStartTime < 350)) {
+            isShouting = false; // Too short to be a distress shout
+        }
     }
     return false;
 }
@@ -475,11 +511,16 @@ void sendGPSTelemetry() {
 
 // Core 0: High-Frequency Audio DSP (Spawned only if physical I2S microphone is detected)
 void audioCoreTask(void* parameter) {
-    Serial.println("[Core 0] Audio Clap Listening Task Active (Double-Clap SOS Mode).");
+    Serial.println("[Core 0] Audio Clap & Voice Distress Task Active (2-Clap SOS & Scream / Help Shout).");
     while (true) {
-        if (hasI2SMic && updateClapPattern()) {
-            Serial.println("\n[Core 0] >>> 👏 👏 2-CLAP EMERGENCY PATTERN DETECTED! <<<");
-            triggerEmergencySOS("CLAP", 0.95f);
+        if (hasI2SMic && readAudioBuffer()) {
+            if (updateClapPattern()) {
+                Serial.println("\n[Core 0] >>> 👏 👏 2-CLAP EMERGENCY PATTERN DETECTED! <<<");
+                triggerEmergencySOS("CLAP", 0.95f);
+            } else if (detectVoiceDistress()) {
+                Serial.println("\n[Core 0] >>> 🗣️ LOUD DISTRESS VOICE / HELP SHOUT DETECTED! <<<");
+                triggerEmergencySOS("VOICE_DISTRESS", 0.90f);
+            }
         }
         vTaskDelay(pdMS_TO_TICKS(5));
     }
@@ -508,12 +549,13 @@ void setup() {
     Serial.println("[Setup 1/6] Actuators initialized (Buzzer: GPIO 14, Vibration: GPIO 15, LED: GPIO 2)");
     Serial.flush();
 
-    // 2. Initialize TTP223 Capacitive Touch with Auto-Polarity Baseline Calibration
+    // 2. Initialize Dual-Mode Touch Sensor (TTP223 Digital Module + ESP32 Internal TouchPad T4 on GPIO 13)
     pinMode(PIN_TOUCH_SENSOR, INPUT);
     delay(150); // Allow TTP223 power-on self-calibration cycle
     touchIdleBaseline = digitalRead(PIN_TOUCH_SENSOR);
-    Serial.printf("[Setup 2/6] TTP223 Capacitive Touch Sensor initialized on GPIO 13 (Idle baseline: %s)\n",
-                  touchIdleBaseline == HIGH ? "HIGH (Active LOW module)" : "LOW (Active HIGH module)");
+    int initialCap = touchRead(T4);
+    Serial.printf("[Setup 2/6] Dual-Mode Touch Sensor on GPIO 13: Digital Baseline = %d | Cap T4 = %d\n",
+                  touchIdleBaseline, initialCap);
     Serial.flush();
 
     // 3. Initialize MPU-6050 Motion Sensor (Safe check with timeout)
@@ -695,19 +737,35 @@ void loop() {
     // 2. Poll GPS Module (Non-blocking character stream)
     pollGPS();
 
-    // 3. TTP223 Touch SOS Check (Instant Visual/Tactile Feedback + Hold 0.5s or Double-Tap for SOS)
-    int currentTouchPin = digitalRead(PIN_TOUCH_SENSOR);
-    bool touchState = (currentTouchPin != touchIdleBaseline);
+    // 3. Dual-Mode Touch SOS Check (TTP223 Module OR ESP32 Internal Capacitive T4 on Pin 13)
+    int currentTouchDigital = digitalRead(PIN_TOUCH_SENSOR);
+    int currentTouchCap = touchRead(T4); // ESP32 hardware capacitive touch channel 4 (GPIO 13)
+    
+    // Active if digital changed from idle OR finger touch dropped internal capacitance < 35
+    bool digitalActive = (currentTouchDigital != touchIdleBaseline);
+    bool capActive = (currentTouchCap > 0 && currentTouchCap < 35);
+    bool touchState = digitalActive || capActive;
+
     static unsigned long lastTapTime = 0;
     static int tapCount = 0;
+    static unsigned long lastTouchDiag = 0;
+
+    // Periodic live diagnostics every 3.5 seconds
+    if (now - lastTouchDiag > 3500) {
+        lastTouchDiag = now;
+        Serial.printf("[Touch Diagnostics] GPIO 13 Digital: %d (Baseline: %d) | Cap T4: %d | Status: %s\n",
+                      currentTouchDigital, touchIdleBaseline, currentTouchCap, 
+                      touchState ? "TOUCHED!" : "Idle (Touch pin 13 / TTP223 pad to test)");
+    }
 
     if (touchState) {
         digitalWrite(PIN_STATUS_LED, HIGH); // Instant visual feedback when touched!
         if (!touchPressed) {
             touchPressed = true;
             touchStartTime = now;
-            Serial.println("\n[Touch] 👆 Touch Sensor Contact! (Hold 0.5s or Double-Tap for SOS)");
-            pulseHaptic(50); // Tactile confirmation tick
+            Serial.printf("\n[Touch] 👆 Touch Sensor Contact! (Digital: %d, Cap T4: %d) -> Hold 0.5s or Double-Tap for SOS\n",
+                          currentTouchDigital, currentTouchCap);
+            pulseHaptic(60); // Tactile confirmation tick
         } else if (now - touchStartTime >= TOUCH_HOLD_TRIGGER_MS) {
             Serial.println("\n[Touch] 🚨 Touch SOS Threshold Reached (0.5s Hold)! 🚨");
             triggerEmergencySOS("TOUCH", 1.00f);
@@ -722,7 +780,7 @@ void loop() {
                 tapCount++;
                 if (tapCount == 1) {
                     lastTapTime = now;
-                    Serial.println("[Touch] Single Click / Tap registered.");
+                    Serial.println("[Touch] Single Click / Tap registered. Tap once more within 0.7s for SOS.");
                 } else if (tapCount >= 2 && (now - lastTapTime < 700)) {
                     Serial.println("\n[Touch] 🚨 Double-Tap Touch SOS Triggered! 🚨");
                     triggerEmergencySOS("TOUCH_DOUBLE_TAP", 1.00f);

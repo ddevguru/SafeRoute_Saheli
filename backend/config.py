@@ -10,7 +10,7 @@ load_dotenv(os.path.join(os.path.dirname(basedir), '.env'))
 class Config:
     """Base Configuration"""
     APP_NAME = "SafeRoute Saheli"
-    VERSION = "1.0.0"
+    VERSION = "1.0.2"
     SECRET_KEY = os.getenv("SECRET_KEY", "saheli_super_secret_flask_key_2026_default")
     JWT_SECRET = os.getenv("JWT_SECRET", "saheli_super_secret_jwt_key_2026_default")
     JWT_EXPIRATION_DELTA = timedelta(hours=int(os.getenv("JWT_EXPIRATION_HOURS", 24)))
