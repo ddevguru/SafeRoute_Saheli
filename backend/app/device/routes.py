@@ -207,6 +207,8 @@ def device_heartbeat():
         device.battery_voltage = float(data['battery_voltage'])
     if 'wifi_rssi' in data:
         device.wifi_rssi = int(data['wifi_rssi'])
+    if 'ip_address' in data:
+        device.ip_address = str(data['ip_address'])
     if 'camera_health' in data:
         device.camera_health = str(data['camera_health'])
     if 'firmware_version' in data:
@@ -223,7 +225,7 @@ def device_heartbeat():
 
 @device_bp.route('/events', methods=['POST'])
 def device_events():
-    """ESP32 sends raw sensor events (touch, motion, voice, clap)"""
+    """ESP32 sends raw sensor events (touch, motion, voice, clap) and triggers ecosystem alerts"""
     data = request.get_json() or {}
     device_id = data.get('device_id', '').strip()
     device_secret = data.get('device_secret', '').strip()
@@ -241,6 +243,37 @@ def device_events():
         event_payload=payload
     )
     db.session.add(event)
+
+    incident_data = None
+    if event_type == 'EMERGENCY_TRIGGER':
+        device.status = 'EMERGENCY'
+        target_user_id = device.assigned_user_id
+        if not target_user_id:
+            saheli_user = User.query.filter_by(role='SAHELI').first()
+            if saheli_user:
+                target_user_id = saheli_user.id
+                device.assigned_user_id = target_user_id
+
+        if target_user_id:
+            from backend.app.services.emergency_service import EmergencyService
+            trigger_type = payload.get('trigger_type', 'HARDWARE_BUTTON')
+            try:
+                lat = float(payload.get('latitude', 28.6139))
+                lon = float(payload.get('longitude', 77.2090))
+            except (ValueError, TypeError):
+                lat, lon = 28.6139, 77.2090
+            incident = EmergencyService.trigger_emergency(
+                user_id=target_user_id,
+                trigger_type=trigger_type,
+                latitude=lat,
+                longitude=lon
+            )
+            incident_data = incident.to_dict() if incident else None
+
     db.session.commit()
 
-    return jsonify({'success': True, 'message': 'Event recorded'}), 200
+    return jsonify({
+        'success': True, 
+        'message': 'EMERGENCY_ACTIVATED' if incident_data else 'Event recorded',
+        'incident': incident_data
+    }), 200

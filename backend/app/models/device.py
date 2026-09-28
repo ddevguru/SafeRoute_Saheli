@@ -20,6 +20,7 @@ class Device(db.Model):
     battery_voltage = db.Column(db.Float, default=4.20)
     wifi_rssi = db.Column(db.Integer, default=-60)
     camera_health = db.Column(db.String(50), default='IDLE')
+    ip_address = db.Column(db.String(64), nullable=True)
     created_at = db.Column(db.DateTime, default=datetime.utcnow)
     updated_at = db.Column(db.DateTime, default=datetime.utcnow, onupdate=datetime.utcnow)
 
@@ -53,6 +54,7 @@ class Device(db.Model):
             'is_paired': self.is_paired,
             'status': calculated_status,
             'is_online': is_live,
+            'ip_address': self.ip_address,
             'last_heartbeat': self.last_heartbeat.isoformat() if self.last_heartbeat else None,
             'firmware_version': self.firmware_version,
             'battery_percent': self.battery_percent if is_live else 0,
