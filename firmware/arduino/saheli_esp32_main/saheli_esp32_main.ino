@@ -573,9 +573,19 @@ void setup() {
             Serial.println("==================================================\n");
             sendCloudHeartbeat();
         } else {
-            Serial.println("\n[WiFi STA] Router/Hotspot not connected yet.");
-            Serial.println("👉 Direct SoftAP is Active: Connect Phone to 'Saheli_Smart_Band' (Pass: 12345678)");
-            Serial.println("👉 In Saheli App, use IP: 192.168.4.1\n");
+            Serial.println("\n[WiFi STA] Router/Hotspot not found.");
+            Serial.println("[WiFi Scan] Scanning visible 2.4 GHz networks in range...");
+            int n = WiFi.scanNetworks();
+            if (n == 0) {
+                Serial.println("[WiFi Scan] No 2.4 GHz networks found.");
+            } else {
+                Serial.printf("[WiFi Scan] Found %d networks:\n", n);
+                for (int i = 0; i < n && i < 8; ++i) {
+                    Serial.printf("  %d: \"%s\" (Signal: %d dBm)\n", i + 1, WiFi.SSID(i).c_str(), WiFi.RSSI(i));
+                }
+            }
+            Serial.println("\n⚠️ TIP: ESP32 only supports 2.4 GHz Wi-Fi! If phone hotspot is 5 GHz, switch phone to '2.4 GHz Band' / 'Extend Compatibility'.");
+            Serial.println("👉 OR simply connect your phone's Wi-Fi to 'Saheli_Smart_Band' (Pass: 12345678) & Use IP: 192.168.4.1 in Saheli App.\n");
         }
     } else {
         Serial.println("[WiFi STA] Notice: Set WIFI_SSID & WIFI_PASSWORD to connect directly to home router/cloud.");
