@@ -260,7 +260,7 @@ def device_events():
         device.status = 'EMERGENCY'
         target_user_id = device.assigned_user_id
         if not target_user_id:
-            saheli_user = User.query.filter_by(role='SAHELI').first()
+            saheli_user = User.query.first()
             if saheli_user:
                 target_user_id = saheli_user.id
                 device.assigned_user_id = target_user_id
