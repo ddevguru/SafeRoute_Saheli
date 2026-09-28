@@ -65,6 +65,7 @@ const char* FIRMWARE_VERSION  = "1.0.0-ARDUINO";
 
 // Detection Thresholds
 #define TOUCH_HOLD_TRIGGER_MS 500   // 0.5s quick hold for SOS
+#define TOUCH_CAP_DELTA_THRESH 55   // Shift from baseline for ESP32 Core v3.x capacitive touch (T4)
 #define MPU6050_ADDR          0x68
 #define FALL_ACCEL_THRESHOLD  2.8f  // 2.8 G impact
 #define STRUGGLE_GYRO_THRESH  200.0f// 200 deg/s angular velocity
@@ -72,6 +73,12 @@ const char* FIRMWARE_VERSION  = "1.0.0-ARDUINO";
 #define CLAP_MIN_GAP_MS       140   // Min interval between claps (ms)
 #define CLAP_MAX_GAP_MS       1200  // Max interval between claps (ms, comfortable human clapping window)
 #define CLAP_COUNT_REQUIRED   2     // 2 rapid claps (Double-Clap SOS: Clap-Clap)
+
+// Voice Distress & Scream Detection ("HELP!" / "BACHAO!" / Loud Screaming)
+#define VOICE_DISTRESS_PEAK_THRESHOLD 13500 // Loud scream peak (> 13500; room talking is ~4000-6500)
+#define VOICE_DISTRESS_AVG_THRESHOLD  2200  // Continuous acoustic vowel energy (> 2200)
+#define VOICE_DISTRESS_MIN_MS         450   // Must sustain continuously for >= 450 ms (rejects claps & room noise)
+#define VOICE_DISTRESS_MAX_MS         2200  // Max duration limit (2.2 seconds)
 
 // Telemetry Timing Intervals
 #define INTERVAL_NORMAL_GPS   25000 // 25 seconds normal GPS push
@@ -101,7 +108,8 @@ unsigned long lastHeartbeatTime  = 0;
 unsigned long lastGpsPushTime    = 0;
 unsigned long touchStartTime     = 0;
 bool touchPressed         = false;
-int  touchIdleBaseline    = LOW; // Dynamic baseline calibration for Active-HIGH/Active-LOW TTP223
+int  touchIdleBaseline    = LOW;  // Dynamic baseline calibration for Active-HIGH/Active-LOW TTP223
+int  touchCapBaseline     = 1420; // Dynamic baseline calibration for ESP32 capacitive touch channel T4
 
 // Clap Detector State Machine
 int clapCount             = 0;
@@ -341,9 +349,21 @@ bool detectClapSpike() {
     return (currentAudioMaxAmp > CLAP_PEAK_THRESHOLD && currentAudioMaxAmp > (currentAudioAvgAmp * 3.0));
 }
 
+// Global state for voice distress detection so claps can clear it immediately
+static unsigned long voiceShoutStartTime = 0;
+static bool isVoiceShouting = false;
+
+void resetVoiceDistressState() {
+    voiceShoutStartTime = 0;
+    isVoiceShouting = false;
+}
+
 bool updateClapPattern() {
     unsigned long now = millis();
     if (detectClapSpike()) {
+        // A clap is a sharp impulse! It is NOT a vocal scream. Reset voice distress state immediately!
+        resetVoiceDistressState();
+
         if (clapCount == 0) {
             clapCount = 1;
             lastClapTime = now;
@@ -375,28 +395,32 @@ bool updateClapPattern() {
 
 // Voice Distress & Scream Detection ("HELP!" / "BACHAO!" / Loud Screaming)
 bool detectVoiceDistress() {
-    static unsigned long shoutStartTime = 0;
-    static bool isShouting = false;
     unsigned long now = millis();
 
-    // Loud voice shout / distress scream threshold (> 4200 sustained amplitude)
-    if (currentAudioMaxAmp > 4200) {
-        if (!isShouting) {
-            isShouting = true;
-            shoutStartTime = now;
-            Serial.printf("[Voice] 🗣️ Loud sound heard! (Amp: %d)... keep shouting 'HELP!' for 0.35s!\n", currentAudioMaxAmp);
+    // A true vocal scream or distress shout ("HELP!", "BACHAO!") has:
+    // 1. High peak volume (> 13500) — conversational speech and room noise are 4000-6500
+    // 2. High average energy across the sample buffer (> 2200) — continuous vocal cord vibration
+    // 3. Harmonic waveform with crest factor < 4.5 (sharp impulses like claps/taps have crest factor > 5.0)
+    bool isVocalShout = (currentAudioMaxAmp >= VOICE_DISTRESS_PEAK_THRESHOLD &&
+                         currentAudioAvgAmp >= VOICE_DISTRESS_AVG_THRESHOLD &&
+                         (currentAudioMaxAmp < currentAudioAvgAmp * 4.5));
+
+    if (isVocalShout) {
+        if (!isVoiceShouting) {
+            isVoiceShouting = true;
+            voiceShoutStartTime = now;
         } else {
-            unsigned long duration = now - shoutStartTime;
-            if (duration >= 350 && duration <= 2200) {
-                // Sustained loud acoustic energy for 350ms - 2.2s (human scream or HELP shout)
-                isShouting = false;
-                shoutStartTime = 0;
+            unsigned long duration = now - voiceShoutStartTime;
+            if (duration >= VOICE_DISTRESS_MIN_MS && duration <= VOICE_DISTRESS_MAX_MS) {
+                // Sustained loud distress shout for 450ms - 2.2s confirmed!
+                resetVoiceDistressState();
                 return true;
             }
         }
     } else {
-        if (isShouting && (now - shoutStartTime < 350)) {
-            isShouting = false; // Too short to be a distress shout
+        // Sound dropped below vocal distress threshold — reset immediately to prevent false triggers!
+        if (isVoiceShouting) {
+            resetVoiceDistressState();
         }
     }
     return false;
@@ -553,9 +577,18 @@ void setup() {
     pinMode(PIN_TOUCH_SENSOR, INPUT);
     delay(150); // Allow TTP223 power-on self-calibration cycle
     touchIdleBaseline = digitalRead(PIN_TOUCH_SENSOR);
-    int initialCap = touchRead(T4);
-    Serial.printf("[Setup 2/6] Dual-Mode Touch Sensor on GPIO 13: Digital Baseline = %d | Cap T4 = %d\n",
-                  touchIdleBaseline, initialCap);
+
+    // Calibrate internal capacitive touch baseline over 20 samples
+    long capSum = 0;
+    for (int i = 0; i < 20; i++) {
+        capSum += touchRead(T4);
+        delay(5);
+    }
+    touchCapBaseline = (int)(capSum / 20);
+    if (touchCapBaseline == 0) touchCapBaseline = 1420;
+
+    Serial.printf("[Setup 2/6] Dual-Mode Touch Sensor on GPIO 13: Digital Baseline = %d | Cap T4 Baseline = %d\n",
+                  touchIdleBaseline, touchCapBaseline);
     Serial.flush();
 
     // 3. Initialize MPU-6050 Motion Sensor (Safe check with timeout)
@@ -741,20 +774,29 @@ void loop() {
     int currentTouchDigital = digitalRead(PIN_TOUCH_SENSOR);
     int currentTouchCap = touchRead(T4); // ESP32 hardware capacitive touch channel 4 (GPIO 13)
     
-    // Active if digital changed from idle OR finger touch dropped internal capacitance < 35
+    int capDelta = abs(currentTouchCap - touchCapBaseline);
+    bool capActive = false;
+    if (touchCapBaseline < 100) {
+        // Legacy ESP32 Core v2.x (0-100 scale, drops on touch < 35)
+        capActive = (currentTouchCap > 0 && currentTouchCap < (touchCapBaseline * 0.55));
+    } else {
+        // Modern ESP32 Core v3.x (raw counter ~1420, changes by > 55 on finger touch)
+        capActive = (capDelta > TOUCH_CAP_DELTA_THRESH);
+    }
     bool digitalActive = (currentTouchDigital != touchIdleBaseline);
-    bool capActive = (currentTouchCap > 0 && currentTouchCap < 35);
     bool touchState = digitalActive || capActive;
 
     static unsigned long lastTapTime = 0;
     static int tapCount = 0;
     static unsigned long lastTouchDiag = 0;
+    static bool touchSosTriggered = false;
 
     // Periodic live diagnostics every 3.5 seconds
     if (now - lastTouchDiag > 3500) {
         lastTouchDiag = now;
-        Serial.printf("[Touch Diagnostics] GPIO 13 Digital: %d (Baseline: %d) | Cap T4: %d | Status: %s\n",
-                      currentTouchDigital, touchIdleBaseline, currentTouchCap, 
+        Serial.printf("[Touch Diagnostics] GPIO 13 Digital: %d (Baseline: %d) | Cap T4: %d (Base: %d, Delta: %+d) | Status: %s\n",
+                      currentTouchDigital, touchIdleBaseline, currentTouchCap, touchCapBaseline,
+                      (currentTouchCap - touchCapBaseline),
                       touchState ? "TOUCHED!" : "Idle (Touch pin 13 / TTP223 pad to test)");
     }
 
@@ -763,20 +805,21 @@ void loop() {
         if (!touchPressed) {
             touchPressed = true;
             touchStartTime = now;
-            Serial.printf("\n[Touch] 👆 Touch Sensor Contact! (Digital: %d, Cap T4: %d) -> Hold 0.5s or Double-Tap for SOS\n",
-                          currentTouchDigital, currentTouchCap);
+            touchSosTriggered = false;
+            Serial.printf("\n[Touch] 👆 Touch Sensor Contact! (Digital: %d, Cap T4: %d, Delta: %+d) -> Hold 0.5s or Double-Tap for SOS\n",
+                          currentTouchDigital, currentTouchCap, (currentTouchCap - touchCapBaseline));
             pulseHaptic(60); // Tactile confirmation tick
-        } else if (now - touchStartTime >= TOUCH_HOLD_TRIGGER_MS) {
+        } else if (!touchSosTriggered && (now - touchStartTime >= TOUCH_HOLD_TRIGGER_MS)) {
+            touchSosTriggered = true;
             Serial.println("\n[Touch] 🚨 Touch SOS Threshold Reached (0.5s Hold)! 🚨");
             triggerEmergencySOS("TOUCH", 1.00f);
-            touchPressed = false;
         }
     } else {
         digitalWrite(PIN_STATUS_LED, LOW);
         if (touchPressed) {
             unsigned long pressDuration = now - touchStartTime;
             touchPressed = false;
-            if (pressDuration > 40 && pressDuration < TOUCH_HOLD_TRIGGER_MS) {
+            if (!touchSosTriggered && pressDuration > 40 && pressDuration < TOUCH_HOLD_TRIGGER_MS) {
                 tapCount++;
                 if (tapCount == 1) {
                     lastTapTime = now;
